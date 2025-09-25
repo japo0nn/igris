@@ -1,15 +1,28 @@
-use std::io;
+use std::process::Command;
+
+pub mod configs;
+
+use configs::config::SHELL;
 
 fn main() {
-    println!("Guess the number!");
+    let output = Command::new(SHELL).arg("-c").arg("dir").output().unwrap();
 
-    println!("Please input your guess.");
+    println!("{}", String::from_utf8_lossy(&output.stdout));
 
-    let mut guess = String::new();
+    let s1 = String::from("hello");
 
-    io::stdin()
-        .read_line(&mut guess)
-        .expect("Failed!");
+    let s2 = String::from(", world");
+    let s3 = takes_ownership(s1, s2);
+    println!("{s3}");
+    let x = 5;
 
-    println!("You guessed: {guess}");
+    makes_copy(x);
+}
+
+fn takes_ownership(s1: &String, s2: &String) -> String {
+    s1 + s2
+}
+
+fn makes_copy(some_integer: i32) {
+    println!("{some_integer}");
 }
