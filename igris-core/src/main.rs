@@ -7,20 +7,22 @@ use configs::config::SHELL;
 fn main() {
     let output = Command::new(SHELL).arg("-c").arg("dir").output().unwrap();
 
-    println!("{}", String::from_utf8_lossy(&output.stdout));
+    let mut s = String::from("hello");
 
-    let s1 = String::from("hello");
+    // let r1 = &s; // обычная ссылка
+    let r2 = &mut s; // ещё одна ссылка
+    println!("{r2}"); // r1 и r2 используются здесь
 
-    let s2 = String::from(", world");
-    let s3 = takes_ownership(s1, s2);
-    println!("{s3}");
-    let x = 5;
-
-    makes_copy(x);
+    // <- после этой строки r1 и r2 больше нигде не нужны
+    // компилятор "видит", что они умирают прямо тут
+    println!("{r2}");
+    // let r3 = &mut s; // можно взять мутабельную ссылку
+    r2.push_str(" string");
+    
 }
 
-fn takes_ownership(s1: &String, s2: &String) -> String {
-    s1 + s2
+fn takes_ownership(s1: &mut String) {
+    s1.push_str("world")
 }
 
 fn makes_copy(some_integer: i32) {
