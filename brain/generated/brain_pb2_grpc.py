@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-import igris_pb2 as igris__pb2
+import brain_pb2 as brain__pb2
 
-GRPC_GENERATED_VERSION = '1.75.1'
+GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,14 +18,14 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in igris_pb2_grpc.py depends on'
+        + ' but the generated code in brain_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class CoreRouterStub(object):
+class BrainRouterStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -34,43 +34,43 @@ class CoreRouterStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.Connect = channel.stream_stream(
-                '/igris.CoreRouter/Connect',
-                request_serializer=igris__pb2.IgrisMessage.SerializeToString,
-                response_deserializer=igris__pb2.IgrisMessage.FromString,
+        self.GetResponse = channel.unary_unary(
+                '/igris.BrainRouter/GetResponse',
+                request_serializer=brain__pb2.IgrisMessage.SerializeToString,
+                response_deserializer=brain__pb2.IgrisMessage.FromString,
                 _registered_method=True)
 
 
-class CoreRouterServicer(object):
+class BrainRouterServicer(object):
     """Missing associated documentation comment in .proto file."""
 
-    def Connect(self, request_iterator, context):
+    def GetResponse(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
 
-def add_CoreRouterServicer_to_server(servicer, server):
+def add_BrainRouterServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'Connect': grpc.stream_stream_rpc_method_handler(
-                    servicer.Connect,
-                    request_deserializer=igris__pb2.IgrisMessage.FromString,
-                    response_serializer=igris__pb2.IgrisMessage.SerializeToString,
+            'GetResponse': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetResponse,
+                    request_deserializer=brain__pb2.IgrisMessage.FromString,
+                    response_serializer=brain__pb2.IgrisMessage.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'igris.CoreRouter', rpc_method_handlers)
+            'igris.BrainRouter', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('igris.CoreRouter', rpc_method_handlers)
+    server.add_registered_method_handlers('igris.BrainRouter', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class CoreRouter(object):
+class BrainRouter(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def Connect(request_iterator,
+    def GetResponse(request,
             target,
             options=(),
             channel_credentials=None,
@@ -80,12 +80,12 @@ class CoreRouter(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.stream_stream(
-            request_iterator,
+        return grpc.experimental.unary_unary(
+            request,
             target,
-            '/igris.CoreRouter/Connect',
-            igris__pb2.IgrisMessage.SerializeToString,
-            igris__pb2.IgrisMessage.FromString,
+            '/igris.BrainRouter/GetResponse',
+            brain__pb2.IgrisMessage.SerializeToString,
+            brain__pb2.IgrisMessage.FromString,
             options,
             channel_credentials,
             insecure,

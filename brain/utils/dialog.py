@@ -3,7 +3,7 @@ from llm_client import LLMClient
 
 
 class Dialog:
-    def __init__(self, provider: str = "openai"):
+    def __init__(self, provider: str = "offline"):
         self.client = LLMClient(provider)
         self.history: List[Dict[str, str]] = []
 

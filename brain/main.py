@@ -1,5 +1,4 @@
 import asyncio
-from core_client import CoreClient
 from utils.dialog import Dialog
 
 
@@ -12,7 +11,7 @@ from utils.dialog import Dialog
 
 
 if __name__ == "__main__":
-    dialog = Dialog(provider="online")  # или "openai"
+    dialog = Dialog(provider="offline")  # или "openai"
     
     while True:
         user_inp = input("You: ")

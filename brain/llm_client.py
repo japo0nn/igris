@@ -1,9 +1,16 @@
 import os
+import json
 import requests
 from openai import OpenAI
+from ollama import chat
+from ollama import ChatResponse
+
 
 class LLMClient:
     def __init__(self, mode="offline"):
+        with open("system_prompt.txt", "r", encoding="utf-8") as f:
+            self.system_prompt = f.read()
+
         if mode == "online" and os.getenv("OPENAI_API_KEY") != None:
             self.client = OpenAIClient()
         elif mode == "offline":
@@ -11,8 +18,13 @@ class LLMClient:
         else:
             raise ValueError("Unknown provider")
 
+    def load_system_prompt():
+        with open("system_prompt.txt", "r", encoding="utf-8") as f:
+            return f.read()
+        
     def ask(self, prompt: str) -> str:
-        return self.client.ask(prompt)
+        return self.client.ask(prompt, self.system_prompt)
+    
     
 
 class OpenAIClient:
@@ -29,11 +41,21 @@ class OpenAIClient:
     
 
 class OllamaClient:
-    def __init__(self, model="llama3"):
+    def __init__(self, model="gemma3:4b"):
         self.url = "http://localhost:11434/api/generate"
         self.model = model
 
-    def ask(self, prompt: str) -> str:
-        resp = requests.post(self.url, json={"model": self.model, "prompt": prompt})
-        return resp.json()["response"]
+    def ask(self, prompt: str, system_prompt: str) -> str:
+        response: ChatResponse = chat(model='gemma3:4b', messages=[
+            {
+                'role': 'system',
+                'content': system_prompt,
+            },
+            {
+                'role': 'user',
+                'content': prompt,
+            },
+        ])
+        # or access fields directly from the response object
+        return response.message.content
 
