@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package igris;
+
+enum SourceTargetType {
+  BRAIN = 0;
+  VOICE = 1;
+  CORE = 2;
+}
+
+enum MessageType {
+  COMMAND = 0;
+  EVENT = 1;
+  RESPONSE = 2;
+}
+
+message IgrisMessage {
+  MessageType type = 1;
+  SourceTargetType source = 2;
+  SourceTargetType target = 3;
+  
+  oneof payload {
+    CommandPayload command = 4;
+    TextPayload text = 5;
+    ResultPayload result = 6;
+  }
+}
+
+message CommandPayload {
+  string command = 1;
+  repeated string args = 2;
+}
+
+message TextPayload {
+  string text = 1;
+}
+
+message ResultPayload {
+  string message = 1;
+  bool success = 2;
+}
+
+service BrainRouter {
+  rpc GetResponse(IgrisMessage) returns (IgrisMessage);
+}

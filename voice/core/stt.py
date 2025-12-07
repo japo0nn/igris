@@ -6,6 +6,8 @@ import numpy as np
 
 import vosk
 
+from client.brain_client import call_brain
+
 q = queue.Queue()
 
 def callback(indata, frames, time, status):
@@ -59,3 +61,4 @@ def recognize(model_path="vosk-model", device=None):
                 text = res.get("text", "")
                 if text:
                     print("You:", text)
+                    call_brain(text)

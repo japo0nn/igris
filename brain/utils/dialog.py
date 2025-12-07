@@ -16,7 +16,6 @@ class Dialog:
 
         # сохраняем ответ ассистента
         self.history.append({"role": "assistant", "content": response})
-
         return response
 
     def get_history(self) -> List[Dict[str, str]]:
