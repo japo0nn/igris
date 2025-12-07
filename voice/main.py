@@ -18,6 +18,6 @@ if __name__ == "__main__":
 
         print(f"Using device #{device_index}: {device_info['name']} with {channels} channels at {samplerate} Hz")
 
-        recognize(r"C:/Users/sosa/Documents/Workspace/igris/voice/core/vosk-model", device_index)
+        recognize(r"./vosk-model", device_index)
     except KeyboardInterrupt:
         print("\nStopped")
