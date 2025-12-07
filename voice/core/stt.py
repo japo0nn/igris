@@ -11,7 +11,16 @@ q = queue.Queue()
 def callback(indata, frames, time, status):
     if status:
         print(status, file=sys.stderr)
-    q.put(bytes(indata))
+
+    data = np.frombuffer(indata, dtype=np.int16)
+
+    # downmix если 2 канала
+    if len(data) % 2 == 0 and data.size >= 2:
+        data = data.reshape(-1, 2)
+        mono = data.mean(axis=1).astype(np.int16)
+        q.put(mono.tobytes())
+    else:
+        q.put(data.tobytes())
 
 def recognize(model_path="vosk-model", device=None):
     model = vosk.Model(model_path)
@@ -25,10 +34,10 @@ def recognize(model_path="vosk-model", device=None):
         samplerate=samplerate,
         blocksize=8000,
         dtype='int16',
-        channels=channels,
+        channels=channels,          # <--- важно
         callback=callback,
         device=device
-    ):
+):
         print("Listening...")
         while True:
             data = q.get()  # bytes
