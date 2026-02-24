@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "crates/igris-cli",
+    "crates/igris-core",
+    "crates/igris-memory", 
+    "crates/igris-skills",
+]
+resolver = "2"
