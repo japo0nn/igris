@@ -2,7 +2,7 @@ use crate::{
     core::CoreContext,
     error::IgrisError,
     models::metadata::{ModuleMetadata, ModuleType},
-    skills::{SkillModule, memory_skill::MemorySkill, shell_executor::ShellExecutor},
+    skills::{SkillModule, gui_skill::GuiSkill, memory_skill::MemorySkill, shell_executor::ShellExecutor},
 };
 
 pub fn init_modules_metadata(
@@ -34,6 +34,17 @@ pub fn init_modules_metadata(
         },
     )?;
 
+    add_or_update_module(
+        &mut modules,
+        ModuleMetadata {
+            name: String::from("GuiSkill"),
+            version: String::from("v0.1.0"),
+            _type: ModuleType::Persistent,
+            description: String::from("GUI automation: control mouse, keyboard, take screenshots and open URLs. Cross-platform."),
+            author: None,
+        },
+    )?;
+
     let mut skills: Vec<Box<dyn SkillModule>> = Vec::new();
 
     let memory_metadata = find_module(&mut modules, &String::from("Memory"))?;
@@ -45,6 +56,12 @@ pub fn init_modules_metadata(
     let shell_metadata = find_module(&mut modules, &String::from("ShellExecutor"))?;
     skills.push(Box::new(ShellExecutor {
         metadata: shell_metadata.clone(),
+    }));
+
+    let _gui_metadata = find_module(&mut modules, &String::from("GuiSkill"))?;
+    skills.push(Box::new(GuiSkill {
+        metadata: _gui_metadata.clone(),
+        llm_config: context.config.llm.clone(),
     }));
 
     return Ok(skills);
