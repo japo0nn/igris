@@ -171,11 +171,27 @@ fn take_screenshot() -> Result<SkillOutput, SkillError> {
         .ok_or_else(|| SkillError::ExecutionFailed("No screen found".to_string()))?;
     let image = screen.capture()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to capture screen: {}", e)))?;
-    image.save(path)
+    let orig_width = image.width();
+    let orig_height = image.height();
+
+    // Resize to max 1280px on longest side for faster vision API response (cross-platform)
+    const MAX_SIZE: u32 = 1280;
+    let final_image = if orig_width > MAX_SIZE || orig_height > MAX_SIZE {
+        let scale = MAX_SIZE as f32 / orig_width.max(orig_height) as f32;
+        let new_w = (orig_width as f32 * scale) as u32;
+        let new_h = (orig_height as f32 * scale) as u32;
+        use screenshots::image::{DynamicImage, imageops::FilterType};
+        DynamicImage::ImageRgba8(image).resize(new_w, new_h, FilterType::Triangle).to_rgba8()
+    } else {
+        image
+    };
+
+    final_image.save(path)
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to save screenshot: {}", e)))?;
+
     Ok(SkillOutput::Text(format!(
-        "Screenshot saved to: {}. Size: {}x{} pixels. Now call analyze_screen to understand what is on screen.",
-        path, image.width(), image.height()
+        "Screenshot saved to: {}. Original: {}x{} px (resized to max 1280px for performance). Now call analyze_screen to understand what is on screen.",
+        path, orig_width, orig_height
     )))
 }
 
