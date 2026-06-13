@@ -105,3 +105,4 @@ Message: "help me fix this Rust compiler error"
 Existing: ["filesystem", "code"]
 Output: ["code", "rust", "debugging"]
 """
+vision_model = "cc/claude-sonnet-4-6"

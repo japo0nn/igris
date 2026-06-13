@@ -27,6 +27,8 @@ pub struct LlmConfig {
     #[serde(default)]
     pub api_key: Option<String>,
     pub model: String,
+    #[serde(default = "default_vision_model")]
+    pub vision_model: String,
     pub base_uri: String,
     pub system_prompt: String,
     #[serde(default = "default_context_limit")]
@@ -38,6 +40,8 @@ pub struct LlmConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct TopicLlmConfig {
     pub model: String,
+    #[serde(default = "default_vision_model")]
+    pub vision_model: String,
     pub system_prompt: String,
 }
 
@@ -60,3 +64,4 @@ pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::E
 
     Ok((config, secrets))
 }
+fn default_vision_model() -> String { String::from("cc/claude-sonnet-4-6") }
