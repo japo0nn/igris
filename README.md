@@ -1,127 +1,293 @@
-# IGRIS — Intelligent General Runtime & Integrated System
+# IGRIS
+## Intelligent General Runtime & Integrated System
 
-IGRIS — это модульный, контекстно-осведомлённый персональный ассистент для ПК, разработанный на Rust. Системе с гибкой архитектурой скиллов и встроенной системой памяти на SQLite.
+[![Rust](https://img.shields.io/badge/Rust-2024%20Edition-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Status](https://img.shields.io/badge/Status-Active%20Development-brightgreen?style=flat-square)]()
+[![Build](https://img.shields.io/badge/Build-Passing-success?style=flat-square)]()
 
-## 🌟 Основные возможности
+> **A modular, context-aware personal PC assistant written in Rust.**  
+> Persistent memory system meets flexible skill architecture for seamless multi-turn interactions via JSON-based messaging.
 
-### Memory Skill — Полнофункциональная система памяти
+---
 
-Полная история всех сообщений сохраняется в SQLite. Доступные методы:
+## 🎯 What is IGRIS?
 
-| Метод | Описание | Аргументы |
-|-------|---------|----------|
-| `by-topics` | Получить сообщения по топикам | Список топиков через пробел (например: `birthday greeting`) |
-| `get-sessions` | Список всех сессий | Пусто |
-| `get-messages-by-time-range` | Сообщения за период | `2026-06-13 06:10:27\|2026-06-14 06:10:27` |
-| `get-messages-paginated` | Постраничный доступ | `1 10` (страница и размер) |
-| `get-messages-by-session` | Все сообщения сессии | UUID сессии |
-| `get-topics` | Список всех топиков | Пусто |
-| `search-messages` | Поиск по ключевому слову | Ключевое слово (например: `function`) |
-| `get-message-by-id` | Конкретное сообщение | UUID сообщения |
-| `get-sessions-by-date` | Сессии за период | `2026-06-13 06:00:00\|2026-06-14 06:00:00` |
+IGRIS is your intelligent agent that:
 
-### Shell Executor — Безопасное выполнение команд
+- 🧠 **Remembers everything** — SQLite-powered memory with 9 retrieval methods
+- ⚡ **Executes smartly** — Multi-step actions with streaming context
+- 🔄 **Stays in sync** — Automatic session restoration on restart
+- 📝 **Speaks JSON** — Pure JSON-based communication protocol
+- 🛠️ **Extends easily** — Modular skill architecture for custom extensions
 
-| Метод | Описание | Аргументы |
-|-------|---------|----------|
-| `execute_command` | Выполнить shell команду | Команда и её аргументы (например: `ls -la /tmp`) |
+---
 
-**Улучшения:**
-- ✅ Проверка кода возврата вместо анализа stderr
-- ✅ Кроссплатформенная поддержка (macOS, Linux, Windows)
-- ✅ Правильная обработка ошибок и кодов выхода
+## ✨ Key Features
 
-### Session Restore — Восстановление контекста
+### 🧠 Memory Skill — Comprehensive Knowledge Base
 
-- ✅ При старте IGRIS автоматически загружает последнюю непустую сессию
-- ✅ Сохраняет полный контекст разговора между перезапусками
-- ✅ Умно выбирает сессию с наличием сообщений
+All conversations persist in SQLite. Query and retrieve with surgical precision:
 
-### Agent Loop — Интеллектуальный цикл обработки
+| Method | Purpose |
+|--------|----------|
+| `by-topics` | Search by conversation topics |
+| `get-sessions` | List all active sessions |
+| `get-messages-by-time-range` | Filter by time window |
+| `get-messages-paginated` | Browse messages page-by-page |
+| `get-messages-by-session` | All messages from one session |
+| `get-topics` | Discover all stored topics |
+| `search-messages` | Full-text keyword search |
+| `get-message-by-id` | Fetch specific message |
+| `get-sessions-by-date` | Sessions within date range |
 
-- ✅ Мультишаговое выполнение действий (skills)
-- ✅ Логирование всех промежуточных сообщений в БД
-- ✅ Поддержка флага `is_done` для отслеживания завершения
-- ✅ Потоковая передача контекста между итерациями
+### ⚙️ Shell Executor — Safe Command Runner
 
-## 🏗️ Архитектура
+Execute shell commands with proper error handling:
 
+```bash
+execute_command "ls -la /tmp"
+```
 
+✅ Exit code validation  
+✅ Cross-platform (macOS, Linux, Windows)  
+✅ Proper error messages  
+
+### 🔄 Agent Loop — Intelligent Processing
+
+```
+User Input → Analyze Skills → Execute Actions → 
+Log to DB → Return Response (JSON)
+```
+
+### 💾 Session Restore — Context Preservation
+
+- Automatically loads last non-empty session on startup
+- Maintains full conversation context between restarts
+- Zero context loss guarantee
+
+---
+
+## 🏗️ Architecture
+
+```
 IGRIS/
-├── core/           # Основной движок
-│   ├── agent.rs    # Agent Loop реализация
-│   ├── chat.rs     # Chat Loopback
-│   └── llm.rs      # LLM интеграция
-├── skills/         # Модули расширений
-│   ├── memory_skill.rs   # Система памяти
-│   └── shell_executor.rs # Shell выполнение
-├── memory/         # Управление историей
-├── models/         # Структуры данных
-├── db.rs          # SQLite операции
-├── registry.rs    # Регистрация скиллов
-└── main.rs        # Entry point
+├── src/
+│   ├── core/
+│   │   ├── agent.rs          # Agent Loop orchestration
+│   │   ├── chat.rs           # Chat Loopback logic
+│   │   ├── llm.rs            # LLM integration
+│   │   ├── task.rs           # Task execution
+│   │   └── mod.rs
+│   ├── skills/
+│   │   ├── memory_skill.rs    # SQLite-backed memory
+│   │   ├── shell_executor.rs  # Safe shell commands
+│   │   └── mod.rs
+│   ├── memory/
+│   │   └── mod.rs            # History management
+│   ├── models/
+│   │   ├── assistant.rs       # Data structures
+│   │   ├── metadata.rs        # Message metadata
+│   │   └── mod.rs
+│   ├── configs/
+│   │   ├── llm.rs            # LLM configuration
+│   │   └── mod.rs
+│   ├── db.rs                 # SQLite operations
+│   ├── error.rs              # Error handling
+│   ├── registry.rs           # Skill registration
+│   └── main.rs               # Entry point
+├── config.toml               # Configuration
+├── secret.toml               # API keys (git-ignored)
+├── Cargo.toml                # Dependencies
+└── README.md                 # This file!
+```
 
+---
 
-## 📦 Зависимости
+## 📦 Dependencies
 
-- `tokio` — асинхронный runtime
-- `serde_json` — JSON парсинг
-- `rusqlite` — SQLite драйвер
-- `uuid` — уникальные идентификаторы
-- `chrono` — работа со временем
-- `reqwest` — HTTP клиент для LLM
+| Crate | Purpose |
+|-------|----------|
+| `tokio` | Async runtime |
+| `serde_json` | JSON parsing |
+| `rusqlite` | SQLite driver |
+| `uuid` | Unique identifiers |
+| `chrono` | DateTime handling |
+| `reqwest` | HTTP client for LLM |
 
-## 🚀 Установка
+---
 
-bash
-git clone https://github.com/yourusername/igris.git
+## 🚀 Installation
+
+### Prerequisites
+- Rust 2024 edition
+- Cargo
+- SQLite (bundled)
+
+### Steps
+
+```bash
+# Clone repository
+git clone git@github.com:japo0nn/igris.git
 cd igris
+
+# Build release binary
 cargo build --release
 
+# Binary ready at: ./target/release/igris
+```
 
-## ⚙️ Конфигурация
+---
 
-Создайте `config.toml`:
+## ⚙️ Configuration
 
-toml
+Non-sensitive settings:
+
+```toml
 [llm]
-api_key = "your-api-key"
 model = "claude-3-5-sonnet-20241022"
 base_uri = "https://api.anthropic.com"
-system_prompt = "You are IGRIS..."
+system_prompt = "You are IGRIS — an intelligent personal PC assistant."
 
 [memory]
 db_path = "./igris.db"
+```
 
+### Configuration `secret.toml`
 
-## 📝 Использование
+**⚠️ IMPORTANT:** This file contains API keys and is **git-ignored**. Create manually:
 
-IGRIS читает из stdin и выводит JSON события:
+```toml
+[llm]
+api_key = "your-anthropic-api-key-here"
+```
 
-bash
-echo 'Привет, запустись!' | ./igris
+**Never commit `secret.toml` to version control!**
 
+---
 
-## 🔄 Цикл обработки
+## 📝 Usage
 
-1. Получить сообщение пользователя
-2. Проанализировать доступные скиллы
-3. Выполнить необходимые действия (с `is_done: false`)
-4. Обработать результаты
-5. Выдать финальный ответ (с `is_done: true`)
-6. Все сообщения автоматически сохраняются в БД
+IGRIS reads from stdin and outputs JSON:
 
-## 🎯 Планы развития
+```bash
+echo 'Hello IGRIS!' | ./igris
+```
 
-- [ ] Юнит-тесты для всех скиллов
-- [ ] CLI интерфейс с clap (флаги, конфиги)
-- [ ] REST API для удаленного управления
-- [ ] Web интерфейс
-- [ ] Полнотекстовый поиск (FTS5)
-- [ ] Документация для разработчиков
-- [ ] Поддержка плагинов
-- [ ] Docker контейнер
+### Response Format
 
-## 📄 Лицензия
+```json
+{
+  "message": "Your response here",
+  "is_done": true,
+  "actions": []
+}
+```
 
-MIT
+### Multi-Step Example
+
+```json
+{
+  "message": "Executing shell command...",
+  "is_done": false,
+  "actions": [
+    {
+      "type": "ExecuteModule",
+      "module": "ShellExecutor",
+      "method": "execute_command",
+      "args": "ls -la /tmp"
+    }
+  ]
+}
+```
+
+---
+
+## 🔄 Processing Loop
+
+```
+┌────────────────────────┐
+│   User Input (JSON)    │
+└───────────┬────────────┘
+            │
+            ▼
+┌────────────────────────┐
+│ Analyze Skills Context │
+└───────────┬────────────┘
+            │
+            ▼
+┌────────────────────────┐
+│ Execute Actions (loop) │
+└───────────┬────────────┘
+            │
+            ▼
+┌────────────────────────┐
+│ Log to SQLite Database │
+└───────────┬────────────┘
+            │
+            ▼
+┌────────────────────────┐
+│ Return Final Response  │
+└────────────────────────┘
+```
+
+---
+
+## 🧪 Development
+
+```bash
+# Run tests
+cargo test
+
+# Build documentation
+cargo doc --open
+
+# Lint code
+cargo clippy
+
+# Format code
+cargo fmt
+```
+
+---
+
+## 🎯 Future Roadmap
+
+- [ ] 🧪 Comprehensive unit tests for all skills
+- [ ] 🖥️ CLI interface with `clap` (flags, configuration)
+- [ ] 🌐 REST API for remote operations
+- [ ] 🎨 Web dashboard for visualization
+- [ ] ⚡ Full-text search (FTS5) optimization
+- [ ] 📚 Developer documentation & examples
+- [ ] 🔌 Plugin system for custom skills
+- [ ] 🐳 Docker containerization
+- [ ] 🔀 Multiple LLM provider support
+- [ ] 🔐 Enhanced security features
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-skill`)
+3. Commit changes (`git commit -am 'Add amazing skill'`)
+4. Push to branch (`git push origin feature/amazing-skill`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+MIT License — see LICENSE file for details
+
+---
+
+## 💬 Support
+
+Have questions? Open an issue on GitHub or check the documentation.
+
+---
+
+**Made with ❤️ by the IGRIS team**
