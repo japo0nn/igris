@@ -29,12 +29,24 @@ pub struct LlmConfig {
     pub model: String,
     pub base_uri: String,
     pub system_prompt: String,
+    #[serde(default = "default_context_limit")]
+    pub context_token_limit: usize,
+    #[serde(default = "default_retention_days")]
+    pub retention_days: i32,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct TopicLlmConfig {
     pub model: String,
     pub system_prompt: String,
+}
+
+fn default_context_limit() -> usize {
+    128000
+}
+
+fn default_retention_days() -> i32 {
+    7
 }
 
 pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::Error>> {

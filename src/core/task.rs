@@ -72,17 +72,7 @@ pub async fn spawn_save_message(
     message: &ActionResponse,
     session: &Session,
 ) -> Result<(), IgrisError> {
-    let context_clone = context.clone();
-    let message_clone = message.clone();
-    let session_clone = session.clone();
-    let role_clone = role.clone();
-
-    tokio::spawn(async move {
-        _ = save_message_with_topics(&context_clone, role_clone, &message_clone, &session_clone)
-            .await;
-    });
-
-    Ok(())
+    save_message_with_topics(context, role, message, session).await
 }
 
 async fn save_message_with_topics(

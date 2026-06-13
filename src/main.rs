@@ -1,4 +1,5 @@
 use std::env;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use crate::{
@@ -21,6 +22,8 @@ pub mod memory;
 pub mod models;
 pub mod registry;
 pub mod skills;
+pub mod supervisor;
+pub mod api;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,6 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let status = "Active";
 
     println!("{name} {version}\nStatus: {status}");
+    supervisor::log_event(supervisor::SupervisorEvent::Startup);
 
     let (config, _secrets) = configs::llm::load_config()?;
 
@@ -44,10 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let initial_history = load_previous_session_history(&context);
     if !initial_history.is_empty() {
-        println!(
-            "Loaded {} messages from previous session.",
-            initial_history.len()
-        );
+        eprintln!("[IGRIS] Loaded {} messages from previous session.", initial_history.len());
     }
 
     let args: Vec<String> = env::args().collect();
@@ -84,7 +85,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
         execute_agent_loop(&mut messages, &context, &skills, &session).await?;
-        println!("");
     } else if args.len() == 2 && (args[1] == "--help" || args[1] == "-h") {
         println!("IGRIS v0.1.0");
         println!("Usage:");
@@ -92,10 +92,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  igris --message <text>    - process a single message and exit");
         println!("  igris -m <text>           - same as --message");
         println!("  igris --help              - show this help");
+    } else if args.len() == 2 && (args[1] == "--server" || args[1] == "-s") {
+        let binary_path = std::env::current_exe().unwrap().to_string_lossy().to_string();
+        let state = api::AppState {
+            connection: context.connection.clone(),
+            binary_path,
+        };
+        let app = api::create_router(state);
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
+        eprintln!("[IGRIS] API server running on http://localhost:3001");
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app).await?;
     } else {
         chat_loopback(&context, &session, &skills, initial_history).await?;
     }
 
+    supervisor::log_event(supervisor::SupervisorEvent::Shutdown);
     Ok(())
 }
 
