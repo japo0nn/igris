@@ -1,3 +1,4 @@
 /target
 igris.db
 secrets.toml
+supervisor.log

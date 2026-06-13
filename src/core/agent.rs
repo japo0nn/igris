@@ -4,6 +4,7 @@ use crate::{
         llm::ask_llm,
         task::{build_task_object, spawn_save_message},
     },
+    db,
     error::IgrisError,
     memory::Session,
     models::assistant::{Action, ActionResponse, AssistantMessage},
@@ -16,6 +17,23 @@ pub async fn execute_agent_loop(
     skills: &Vec<Box<dyn SkillModule>>,
     session: &Session,
 ) -> Result<(), IgrisError> {
+    // CONTEXT TOKEN MANAGEMENT: Проверяем размер контекста перед первым ask_llm
+    let token_limit = context.config.llm.context_token_limit;
+    let estimated_tokens = db::estimate_context_tokens(
+        &context.connection.lock().unwrap(),
+        &session.id.to_string(),
+    ).unwrap_or(0);
+    
+    if estimated_tokens > token_limit {
+        // Обрезаем старые сообщения если превышен лимит
+        let retention_days = context.config.llm.retention_days;
+        let _ = db::trim_old_messages(
+            &context.connection.lock().unwrap(),
+            &session.id.to_string(),
+            retention_days,
+        );
+    }
+    
     let mut content = ask_llm(&messages, &context.config).await?;
     loop {
         match serde_json::from_str::<ActionResponse>(&content) {
@@ -55,7 +73,6 @@ pub async fn execute_agent_loop(
                                                 Some(output.clone()),
                                             )?;
 
-                                            // Save the user message (task object) to DB
                                             let user_msg = ActionResponse {
                                                 message: format!(
                                                     "[SYSTEM EXECUTION RESULT] {}",
@@ -78,8 +95,23 @@ pub async fn execute_agent_loop(
                                                     .to_string(),
                                             });
 
-                                            println!("Assistant: {}: {}", response.message, args);
-                                            println!("System: {}", output);
+                                            eprintln!("Assistant: {}: {}", response.message, args);
+                                            eprintln!("System: {}", output);
+
+                                            // CONTEXT TOKEN MANAGEMENT: Проверяем перед каждым ask_llm
+                                            let estimated_tokens = db::estimate_context_tokens(
+                                                &context.connection.lock().unwrap(),
+                                                &session.id.to_string(),
+                                            ).unwrap_or(0);
+                                            
+                                            if estimated_tokens > token_limit {
+                                                let retention_days = context.config.llm.retention_days;
+                                                let _ = db::trim_old_messages(
+                                                    &context.connection.lock().unwrap(),
+                                                    &session.id.to_string(),
+                                                    retention_days,
+                                                );
+                                            }
 
                                             content = ask_llm(&messages, &context.config).await?;
 
@@ -88,7 +120,6 @@ pub async fn execute_agent_loop(
                                                     &content,
                                                 ) {
                                                     Ok(value) => {
-                                                        // Save the assistant response to DB
                                                         spawn_save_message(
                                                             &context,
                                                             "assistant".to_string(),
@@ -117,7 +148,7 @@ pub async fn execute_agent_loop(
                                                         )
                                                         .await?;
 
-                                                        println!("System: {}", error);
+                                                        eprintln!("System: {}", error);
                                                     }
                                                 }
                                             }
@@ -139,12 +170,11 @@ pub async fn execute_agent_loop(
                                         )
                                         .await?;
 
-                                        println!("System: {}", error);
+                                        eprintln!("System: {}", error);
 
                                         loop {
                                             match serde_json::from_str::<ActionResponse>(&content) {
                                                 Ok(value) => {
-                                                    // Save the assistant response to DB
                                                     spawn_save_message(
                                                         &context,
                                                         "assistant".to_string(),
@@ -162,7 +192,9 @@ pub async fn execute_agent_loop(
                                                 }
                                                 Err(error) => {
                                                     content = handle_error(
-                                                        IgrisError::ParseError(error.to_string()),
+                                                        IgrisError::SkillError(
+                                                            error.to_string(),
+                                                        ),
                                                         content,
                                                         skills,
                                                         &context,
@@ -171,7 +203,7 @@ pub async fn execute_agent_loop(
                                                     )
                                                     .await?;
 
-                                                    println!("System: {}", error);
+                                                    eprintln!("System: {}", error);
                                                 }
                                             }
                                         }
@@ -186,27 +218,18 @@ pub async fn execute_agent_loop(
                         }
                     }
 
-                    if let Some(new_action) = next_action {
-                        response = new_action;
+                    if let Some(next) = next_action {
+                        response = next;
                     } else {
                         break;
                     }
                 }
 
-                // Save the final assistant response if not already saved (final is_done response)
-                if !response.is_done {
-                    // This case shouldn't happen after loop break with is_done, but just in case
-                    spawn_save_message(&context, "assistant".to_string(), &response, session)
-                        .await?;
-                }
-
-                println!("Assistant: {}", response.message);
-
                 break;
             }
             Err(error) => {
                 content = handle_error(
-                    IgrisError::ParseError(error.to_string()),
+                    IgrisError::SkillError(error.to_string()),
                     content,
                     skills,
                     &context,
@@ -215,7 +238,7 @@ pub async fn execute_agent_loop(
                 )
                 .await?;
 
-                println!("System: {}", error);
+                eprintln!("System: {}", error);
             }
         }
     }
@@ -225,21 +248,12 @@ pub async fn execute_agent_loop(
 
 async fn handle_error(
     error: IgrisError,
-    mut content: String,
-    skills: &Vec<Box<dyn SkillModule>>,
+    content: String,
+    _skills: &Vec<Box<dyn SkillModule>>,
     context: &CoreContext,
-    messages: &mut Vec<AssistantMessage>,
+    _messages: &mut Vec<AssistantMessage>,
     session: &Session,
 ) -> Result<String, IgrisError> {
-    let task_object = build_task_object(&content, skills, context, Some(error.to_string()))?;
-
-    messages.push(AssistantMessage {
-        role: String::from("user"),
-        content: serde_json::json!(&task_object).to_string(),
-    });
-
-    content = ask_llm(&messages, &context.config).await?;
-
     spawn_save_message(
         &context,
         "user".to_string(),
