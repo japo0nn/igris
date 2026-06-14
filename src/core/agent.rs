@@ -32,214 +32,212 @@ pub async fn execute_agent_loop(
     }
 
     let max_tokens = context.config.llm.max_tokens;
+    context.spinner.start("Thinking...".to_string()).await;
     let mut content = ask_llm(&messages, &context.config, max_tokens).await?;
-    loop {
-        match serde_json::from_str::<ActionResponse>(&content) {
-            Ok(mut response) => {
-                spawn_save_message(&context, "assistant".to_string(), &response, session).await?;
 
-                messages.push(AssistantMessage {
-                    role: String::from("assistant"),
-                    content: String::from(&content),
-                });
+    'outer: loop {
+        // Parse LLM response, retry on parse error
+        let mut response = loop {
+            match serde_json::from_str::<ActionResponse>(&content) {
+                Ok(r) => break r,
+                Err(error) => {
+                    eprintln!("System parse error: {}", error);
+                    content = handle_error(
+                        IgrisError::LlmInvalidResponse(error.to_string()),
+                        content,
+                        skills,
+                        context,
+                        messages,
+                        session,
+                        true,
+                    )
+                    .await?;
+                }
+            }
+        };
 
-                loop {
-                    if response.is_done {
-                        break;
-                    }
+        spawn_save_message(context, "assistant".to_string(), &response, session).await?;
+        messages.push(AssistantMessage {
+            role: String::from("assistant"),
+            content: content.clone(),
+        });
 
-                    let mut next_action: Option<ActionResponse> = None;
+        loop {
+            if response.is_done {
+                context.spinner.stop(response.message.clone()).await;
+                break 'outer;
+            }
 
-                    for action in &response.actions {
-                        match action {
-                            Action::ExecuteModule {
-                                module,
-                                method,
-                                args,
-                            } => {
-                                let skill = find_skill(skills, module)?;
+            let total = response.actions.len();
+            let mut combined_output = String::new();
+            let mut error_result: Option<IgrisError> = None;
 
-                                let execution =
-                                    tokio::task::block_in_place(|| skill.execute(method, args));
+            // Execute all actions sequentially, stop on first failure
+            'actions: for (idx, action) in response.actions.iter().enumerate() {
+                match action {
+                    Action::ExecuteModule {
+                        module,
+                        method,
+                        args,
+                    } => {
+                        let skill = match find_skill(skills, module) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                context.spinner.add_log_line(format!(
+                                    "\x1b[2m|   \x1b[31m[{}/{}] module not found: {}\x1b[0m",
+                                    idx + 1,
+                                    total,
+                                    module
+                                ));
+                                error_result = Some(IgrisError::SkillError(e.to_string()));
+                                break 'actions;
+                            }
+                        };
 
-                                match execution {
-                                    Ok(result) => match &result {
-                                        SkillOutput::Text(output) => {
-                                            let task_object = build_task_object(
-                                                &response.message,
-                                                skills,
-                                                context,
-                                                Some(output.clone()),
-                                            )?;
+                        // Log which command is running
+                        if total > 1 {
+                            context.spinner.add_log_line(format!(
+                                "\x1b[2m| [{}/{}] {}\x1b[0m",
+                                idx + 1,
+                                total,
+                                response.message
+                            ));
+                        } else {
+                            context
+                                .spinner
+                                .add_log_line(format!("\x1b[2m| {}\x1b[0m", response.message));
+                        }
+                        context
+                            .spinner
+                            .add_log_line(format!("\x1b[2m|   \x1b[33m{}\x1b[0m", args));
 
-                                            let user_msg = ActionResponse {
-                                                message: format!(
-                                                    "[SYSTEM EXECUTION RESULT] {}",
-                                                    output
-                                                ),
-                                                is_done: true,
-                                                actions: vec![],
-                                            };
-                                            spawn_save_message(
-                                                &context,
-                                                "user".to_string(),
-                                                &user_msg,
-                                                session,
-                                            )
-                                            .await?;
+                        let execution = tokio::task::block_in_place(|| skill.execute(method, args));
 
-                                            messages.push(AssistantMessage {
-                                                role: String::from("user"),
-                                                content: serde_json::json!(&task_object)
-                                                    .to_string(),
-                                            });
-
-                                            eprintln!("Assistant: {}: {}", response.message, args);
-                                            eprintln!("System: {}", output);
-
-                                            let estimated_tokens = db::estimate_context_tokens(
-                                                &context.connection.lock().unwrap(),
-                                                &session.id.to_string(),
-                                            )
-                                            .unwrap_or(0);
-
-                                            if estimated_tokens > token_limit {
-                                                let retention_days =
-                                                    context.config.llm.retention_days;
-                                                let _ = db::trim_old_messages(
-                                                    &context.connection.lock().unwrap(),
-                                                    &session.id.to_string(),
-                                                    retention_days,
-                                                );
-                                            }
-
-                                            content =
-                                                ask_llm(&messages, &context.config, max_tokens)
-                                                    .await?;
-
-                                            loop {
-                                                match serde_json::from_str::<ActionResponse>(
-                                                    &content,
-                                                ) {
-                                                    Ok(value) => {
-                                                        spawn_save_message(
-                                                            &context,
-                                                            "assistant".to_string(),
-                                                            &value,
-                                                            session,
-                                                        )
-                                                        .await?;
-
-                                                        messages.push(AssistantMessage {
-                                                            role: String::from("assistant"),
-                                                            content: String::from(&content),
-                                                        });
-                                                        next_action = Some(value);
-                                                        break;
-                                                    }
-                                                    Err(error) => {
-                                                        eprintln!("System parse error: {}", error);
-                                                        content = handle_error(
-                                                            IgrisError::ParseError(
-                                                                error.to_string(),
-                                                            ),
-                                                            content,
-                                                            skills,
-                                                            &context,
-                                                            messages,
-                                                            &session,
-                                                            true,
-                                                        )
-                                                        .await?;
-                                                    }
-                                                }
-                                            }
-
-                                            if next_action.is_some() {
-                                                break;
-                                            }
-                                        }
-                                        _ => {}
-                                    },
-                                    Err(error) => {
-                                        eprintln!("System skill error: {}", error);
-                                        content = handle_error(
-                                            IgrisError::SkillError(error.to_string()),
-                                            content,
-                                            skills,
-                                            &context,
-                                            messages,
-                                            &session,
-                                            false,
-                                        )
-                                        .await?;
-
-                                        loop {
-                                            match serde_json::from_str::<ActionResponse>(&content) {
-                                                Ok(value) => {
-                                                    spawn_save_message(
-                                                        &context,
-                                                        "assistant".to_string(),
-                                                        &value,
-                                                        session,
-                                                    )
-                                                    .await?;
-
-                                                    messages.push(AssistantMessage {
-                                                        role: String::from("assistant"),
-                                                        content: String::from(&content),
-                                                    });
-                                                    next_action = Some(value);
-                                                    break;
-                                                }
-                                                Err(error) => {
-                                                    eprintln!("System parse error: {}", error);
-                                                    content = handle_error(
-                                                        IgrisError::ParseError(error.to_string()),
-                                                        content,
-                                                        skills,
-                                                        &context,
-                                                        messages,
-                                                        &session,
-                                                        true,
-                                                    )
-                                                    .await?;
-                                                }
-                                            }
-                                        }
-
-                                        if next_action.is_some() {
-                                            break;
-                                        }
+                        match execution {
+                            Ok(result) => {
+                                if let SkillOutput::Text(output) = result {
+                                    let line_count = output.lines().count();
+                                    let byte_count = output.len();
+                                    let summary = if output.len() > 300 {
+                                        format!("↳ {} строк, {} байт (скрыт, /output для просмотра)", line_count, byte_count)
+                                    } else {
+                                        format!("↳ {} строк, {} байт", line_count, byte_count)
+                                    };
+                                    context.spinner.add_log_line(format!(
+                                        "\x1b[2m|   \x1b[32m{}\x1b[0m",
+                                        summary
+                                    ));
+                                    if !combined_output.is_empty() {
+                                        combined_output.push_str("\n---\n");
                                     }
+                                    combined_output.push_str(&output);
                                 }
                             }
-                            _ => {}
+                            Err(error) => {
+                                // Show which specific command failed
+                                context.spinner.add_log_line(format!(
+                                    "\x1b[2m|   \x1b[31m[{}/{}] FAILED: {}\x1b[0m",
+                                    idx + 1,
+                                    total,
+                                    error
+                                ));
+                                error_result = Some(IgrisError::SkillError(format!(
+                                    "Command [{}/{}] failed.\nArgs: {}\nError: {}",
+                                    idx + 1,
+                                    total,
+                                    args,
+                                    error
+                                )));
+                                break 'actions;
+                            }
                         }
                     }
+                    _ => {}
+                }
+            }
 
-                    if let Some(next) = next_action {
-                        response = next;
-                    } else {
-                        break;
-                    }
+            context.spinner.set_last_full_output(combined_output.clone());
+            // Single LLM round-trip after all actions complete (or fail)
+            content = if let Some(err) = error_result {
+                handle_error(
+                    err,
+                    content.clone(),
+                    skills,
+                    context,
+                    messages,
+                    session,
+                    false,
+                )
+                .await?
+            } else {
+                // Use summary for LLM context, full output stored in spinner
+                let combined_lines = combined_output.lines().count();
+                let combined_bytes = combined_output.len();
+                let summary = if combined_output.len() > 300 {
+                    format!("[SYSTEM EXECUTION RESULT] (output hidden, {} lines, {} bytes. Use /output to view.)", combined_lines, combined_bytes)
+                } else {
+                    format!("[SYSTEM EXECUTION RESULT] {}", combined_output)
+                };
+                let task_object = build_task_object(
+                    &response.message,
+                    skills,
+                    context,
+                    Some(summary.clone()),
+                )?;
+                let user_msg = ActionResponse {
+                    message: summary,
+                    is_done: true,
+                    actions: vec![],
+                };
+                spawn_save_message(context, "user".to_string(), &user_msg, session).await?;
+                messages.push(AssistantMessage {
+                    role: String::from("user"),
+                    content: serde_json::json!(&task_object).to_string(),
+                });
+
+                let estimated_tokens = db::estimate_context_tokens(
+                    &context.connection.lock().unwrap(),
+                    &session.id.to_string(),
+                )
+                .unwrap_or(0);
+                if estimated_tokens > token_limit {
+                    let _ = db::trim_old_messages(
+                        &context.connection.lock().unwrap(),
+                        &session.id.to_string(),
+                        context.config.llm.retention_days,
+                    );
                 }
 
-                break;
-            }
-            Err(error) => {
-                eprintln!("System parse error: {}", error);
-                content = handle_error(
-                    IgrisError::ParseError(error.to_string()),
-                    content,
-                    skills,
-                    &context,
-                    messages,
-                    &session,
-                    true,
-                )
-                .await?;
-            }
+                ask_llm(messages, &context.config, max_tokens).await?
+            };
+
+            // Parse next LLM response, retry on parse error
+            response = loop {
+                match serde_json::from_str::<ActionResponse>(&content) {
+                    Ok(value) => {
+                        spawn_save_message(context, "assistant".to_string(), &value, session)
+                            .await?;
+                        messages.push(AssistantMessage {
+                            role: String::from("assistant"),
+                            content: content.clone(),
+                        });
+                        break value;
+                    }
+                    Err(error) => {
+                        eprintln!("System parse error: {}", error);
+                        content = handle_error(
+                            IgrisError::LlmInvalidResponse(error.to_string()),
+                            content,
+                            skills,
+                            context,
+                            messages,
+                            session,
+                            true,
+                        )
+                        .await?;
+                    }
+                }
+            };
         }
     }
 
@@ -265,7 +263,6 @@ async fn handle_error(
     session: &Session,
     save_raw_content: bool,
 ) -> Result<String, IgrisError> {
-    // Save the bad/raw assistant response to DB and push to messages context
     if save_raw_content {
         messages.push(AssistantMessage {
             role: String::from("assistant"),
@@ -284,9 +281,8 @@ async fn handle_error(
         .await?;
     }
 
-    let error_str = format!("[SYSTEM EXECUTION RESULT] [SKILL ERROR] {}", error);
+    let error_str = format!("[SYSTEM EXECUTION RESULT] {}", error);
 
-    // Save error as user message to DB
     spawn_save_message(
         context,
         "user".to_string(),
@@ -299,7 +295,6 @@ async fn handle_error(
     )
     .await?;
 
-    // Build task object and push error to messages so LLM is aware
     let task_object = build_task_object(&error_str, skills, context, Some(error_str.clone()))?;
 
     messages.push(AssistantMessage {
@@ -307,7 +302,6 @@ async fn handle_error(
         content: serde_json::json!(&task_object).to_string(),
     });
 
-    // Ask LLM to regenerate with full error context
     let max_tokens = context.config.llm.max_tokens;
     let new_content = ask_llm(messages, &context.config, max_tokens).await?;
 
