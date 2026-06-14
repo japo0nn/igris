@@ -120,7 +120,10 @@ pub async fn execute_agent_loop(
                                     let line_count = output.lines().count();
                                     let byte_count = output.len();
                                     let summary = if output.len() > 300 {
-                                        format!("↳ {} строк, {} байт (скрыт, /output для просмотра)", line_count, byte_count)
+                                        format!(
+                                            "↳ {} строк, {} байт (скрыт, /output для просмотра)",
+                                            line_count, byte_count
+                                        )
                                     } else {
                                         format!("↳ {} строк, {} байт", line_count, byte_count)
                                     };
@@ -157,7 +160,9 @@ pub async fn execute_agent_loop(
                 }
             }
 
-            context.spinner.set_last_full_output(combined_output.clone());
+            context
+                .spinner
+                .set_last_full_output(combined_output.clone());
             // Single LLM round-trip after all actions complete (or fail)
             content = if let Some(err) = error_result {
                 handle_error(
@@ -172,21 +177,14 @@ pub async fn execute_agent_loop(
                 .await?
             } else {
                 // Use summary for LLM context, full output stored in spinner
-                let combined_lines = combined_output.lines().count();
-                let combined_bytes = combined_output.len();
-                let summary = if combined_output.len() > 300 {
-                    format!("[SYSTEM EXECUTION RESULT] (output hidden, {} lines, {} bytes. Use /output to view.)", combined_lines, combined_bytes)
-                } else {
-                    format!("[SYSTEM EXECUTION RESULT] {}", combined_output)
-                };
                 let task_object = build_task_object(
                     &response.message,
                     skills,
                     context,
-                    Some(summary.clone()),
+                    Some(combined_output.clone()),
                 )?;
                 let user_msg = ActionResponse {
-                    message: summary,
+                    message: combined_output.clone(),
                     is_done: true,
                     actions: vec![],
                 };
