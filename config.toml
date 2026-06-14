@@ -106,3 +106,7 @@ Existing: ["filesystem", "code"]
 Output: ["code", "rust", "debugging"]
 """
 vision_model = "cc/claude-sonnet-4-6"
+
+[execution]
+iteration_limit = 10
+fix_iteration_limit = 5

@@ -4,7 +4,7 @@ use crate::{
     error::IgrisError,
     memory::Session,
     models::assistant::{
-        ActionResponse, SystemInfo, TaskObject, TaskObjectSkill, TaskObjectSkillMethod,
+        ActionResponse, Constraints, SystemInfo, TaskObject, TaskObjectSkill, TaskObjectSkillMethod,
         TopicRequest,
     },
     skills::SkillModule,
@@ -22,6 +22,14 @@ pub fn build_task_object(
     #[cfg(not(target_os = "windows"))]
     let shell = std::env::var("SHELL").unwrap_or("sh".to_string());
 
+    let capabilities = vec![
+        "execute_module".to_string(),
+        "prompt_user".to_string(),
+        "permission_request".to_string(),
+        "request_data".to_string(),
+        "generate_chunk".to_string(),
+    ];
+
     let task_object = TaskObject {
         message: message.clone(),
         system_info: SystemInfo {
@@ -31,6 +39,12 @@ pub fn build_task_object(
         system_response: system_response,
         skills: build_skills_context(skills)?,
         all_topics: get_topics(&context.connection.lock().unwrap())?,
+        capabilities,
+        constraints: Constraints {
+            max_iterations: 10,
+            max_fix_iterations: 5,
+            max_tokens: context.config.llm.max_tokens,
+        },
     };
 
     return Ok(task_object);

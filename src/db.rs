@@ -166,6 +166,35 @@ pub fn get_messages_by_session(
     Ok(messages)
 }
 
+pub fn search_messages(
+    connection: &Connection,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<Message>, IgrisError> {
+    let pattern = format!("%{}%", query);
+    let mut stmt = connection.prepare(
+        "SELECT id, session_id, role, content, timestamp, action, is_done 
+         FROM messages 
+         WHERE content LIKE ?1 
+         ORDER BY timestamp DESC 
+         LIMIT ?2"
+    )?;
+    let messages = stmt
+        .query_map(params![pattern, limit], |row| {
+            Ok(Message {
+                id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap_or(Uuid::nil()),
+                session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
+                role: row.get(2)?,
+                content: row.get(3)?,
+                timestamp: parse_db_timestamp(&row.get::<_, String>(4)?),
+                action: row.get::<_, Option<String>>(5)?,
+                is_done: row.get::<_, bool>(6)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(messages)
+}
+
 fn parse_db_timestamp(value: &str) -> DateTime<Local> {
     if let Ok(dt) = DateTime::<FixedOffset>::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f %:z") {
         return dt.with_timezone(&Local);
@@ -188,20 +217,14 @@ fn parse_db_timestamp(value: &str) -> DateTime<Local> {
     Local::now()
 }
 
-// ============================================================================
-// CONTEXT TOKEN LIMIT MANAGEMENT
-// ============================================================================
-
-/// Получить текущую сессию с учетом лимита токенов
 pub fn get_session_context_with_limit(
     connection: &Connection,
     session_id: &str,
     token_limit: usize,
 ) -> Result<Vec<Message>, IgrisError> {
-    let avg_tokens_per_message = 50; // примерная оценка
+    let avg_tokens_per_message = 50;
     let max_messages = token_limit / avg_tokens_per_message;
-    
-    // Получить последние N сообщений текущей сессии
+
     let mut stmt = connection.prepare(
         "SELECT id, session_id, role, content, action, is_done, timestamp 
          FROM messages 
@@ -209,11 +232,11 @@ pub fn get_session_context_with_limit(
          ORDER BY timestamp DESC 
          LIMIT ?2"
     )?;
-    
-    let messages = stmt.query_map([session_id, &max_messages.to_string()], |row| {
+
+    let messages = stmt.query_map(params![session_id, max_messages], |row| {
         Ok(Message {
-            id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap(),
-            session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap(),
+            id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap_or(Uuid::nil()),
+            session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
             role: row.get(2)?,
             content: row.get(3)?,
             action: row.get(4)?,
@@ -222,11 +245,10 @@ pub fn get_session_context_with_limit(
         })
     })?
     .collect::<Result<Vec<_>, _>>()?;
-    
+
     Ok(messages)
 }
 
-/// Обрезать старые сообщения при превышении лимита
 pub fn trim_old_messages(
     connection: &Connection,
     session_id: &str,
@@ -234,16 +256,15 @@ pub fn trim_old_messages(
 ) -> Result<usize, IgrisError> {
     let cutoff_date = chrono::Local::now() - chrono::Duration::days(retention_days as i64);
     let cutoff_str = cutoff_date.to_string();
-    
+
     let affected = connection.execute(
         "DELETE FROM messages WHERE session_id = ?1 AND timestamp < ?2",
-        [session_id, &cutoff_str],
+        rusqlite::params![session_id, &cutoff_str],
     )?;
-    
+
     Ok(affected)
 }
 
-/// Оценить размер контекста в токенах (примерная оценка)
 pub fn estimate_context_tokens(
     connection: &Connection,
     session_id: &str,
@@ -251,16 +272,14 @@ pub fn estimate_context_tokens(
     let mut stmt = connection.prepare(
         "SELECT SUM(LENGTH(content)) FROM messages WHERE session_id = ?1"
     )?;
-    
-    let total_chars: i32 = stmt.query_row([session_id], |row| {
+
+    let total_chars: i32 = stmt.query_row(params![session_id], |row| {
         row.get::<_, Option<i32>>(0).map(|v| v.unwrap_or(0))
     })?;
-    
-    // Примерная оценка: 1 токен = 4 символа
+
     Ok((total_chars as usize) / 4)
 }
 
-/// Получить сообщения в пределах токен-лимита с инверсией от новых к старым
 pub fn get_context_paginated(
     connection: &Connection,
     session_id: &str,
@@ -268,7 +287,7 @@ pub fn get_context_paginated(
     page_size: usize,
 ) -> Result<Vec<Message>, IgrisError> {
     let offset = page * page_size;
-    
+
     let mut stmt = connection.prepare(
         "SELECT id, session_id, role, content, action, is_done, timestamp 
          FROM messages 
@@ -276,13 +295,13 @@ pub fn get_context_paginated(
          ORDER BY timestamp DESC 
          LIMIT ?2 OFFSET ?3"
     )?;
-    
+
     let messages = stmt.query_map(
         rusqlite::params![session_id, page_size, offset],
         |row| {
             Ok(Message {
-                id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap(),
-                session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap(),
+                id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap_or(Uuid::nil()),
+                session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
                 role: row.get(2)?,
                 content: row.get(3)?,
                 action: row.get(4)?,
@@ -292,6 +311,6 @@ pub fn get_context_paginated(
         },
     )?
     .collect::<Result<Vec<_>, _>>()?;
-    
+
     Ok(messages)
 }

@@ -5,6 +5,7 @@ pub struct AppConfig {
     pub llm: LlmConfig,
     pub topic_llm: TopicLlmConfig,
     pub memory: MemoryConfig,
+    pub execution: ExecutionConfig,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -21,6 +22,17 @@ pub struct LlmSecrets {
 pub struct MemoryConfig {
     pub db_path: String,
 }
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ExecutionConfig {
+    #[serde(default = "default_iteration_limit")]
+    pub iteration_limit: u32,
+    #[serde(default = "default_fix_iteration_limit")]
+    pub fix_iteration_limit: u32,
+}
+
+fn default_iteration_limit() -> u32 { 10 }
+fn default_fix_iteration_limit() -> u32 { 5 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct LlmConfig {

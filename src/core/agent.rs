@@ -1,3 +1,5 @@
+use std::io::{self, Write};
+
 use crate::{
     core::{
         CoreContext,
@@ -7,7 +9,7 @@ use crate::{
     db,
     error::IgrisError,
     memory::Session,
-    models::assistant::{Action, ActionResponse, AssistantMessage},
+    models::assistant::{Action, ActionResponse, AssistantMessage, Constraints},
     skills::{SkillModule, SkillOutput, find_skill},
 };
 
@@ -18,30 +20,52 @@ pub async fn execute_agent_loop(
     session: &Session,
 ) -> Result<(), IgrisError> {
     let token_limit = context.config.llm.context_token_limit;
-    let estimated_tokens =
-        db::estimate_context_tokens(&context.connection.lock().unwrap(), &session.id.to_string())
-            .unwrap_or(0);
-
-    if estimated_tokens > token_limit {
-        let retention_days = context.config.llm.retention_days;
-        let _ = db::trim_old_messages(
-            &context.connection.lock().unwrap(),
-            &session.id.to_string(),
-            retention_days,
-        );
-    }
-
     let max_tokens = context.config.llm.max_tokens;
+
+    let mut iteration: u32 = 0;
+    let mut fix_iteration: u32 = 0;
+
     context.spinner.start("Thinking...".to_string()).await;
-    let mut content = ask_llm(&messages, &context.config, max_tokens).await?;
+    let mut content = match ask_llm(&messages, &context.config, max_tokens).await {
+        Ok(c) => c,
+        Err(e @ IgrisError::LlmUnavailable(_)) | Err(e @ IgrisError::LlmTimeout(_)) => {
+            context.spinner.stop(format!("[IGRIS ERROR] LLM недоступен: {}", e)).await;
+            return Err(e);
+        }
+        Err(e) => {
+            return Err(e);
+        }
+    };
 
     'outer: loop {
-        // Parse LLM response, retry on parse error
         let mut response = loop {
             match serde_json::from_str::<ActionResponse>(&content) {
                 Ok(r) => break r,
                 Err(error) => {
                     eprintln!("System parse error: {}", error);
+                    fix_iteration += 1;
+                    if fix_iteration >= context.config.execution.fix_iteration_limit {
+                        let final_state = format!(
+                            "[FIX ERROR] Max fix iterations reached ({}). Last content: {}",
+                            context.config.execution.fix_iteration_limit, content
+                        );
+                        spawn_save_message(
+                            context,
+                            "user".to_string(),
+                            &ActionResponse {
+                                message: final_state.clone(),
+                                is_done: true,
+                                actions: vec![],
+                                iteration,
+                                fix_iteration,
+                                constraints: None,
+                            },
+                            session,
+                        ).await?;
+                        return Err(IgrisError::MaxFixIterationsExceeded(
+                            context.config.execution.fix_iteration_limit as usize,
+                        ));
+                    }
                     content = handle_error(
                         IgrisError::LlmInvalidResponse(error.to_string()),
                         content,
@@ -56,13 +80,24 @@ pub async fn execute_agent_loop(
             }
         };
 
+        iteration = response.iteration;
+        fix_iteration = response.fix_iteration;
+
+        if let Some(ref constraints) = response.constraints {
+            if iteration >= constraints.max_iterations {
+                return Err(IgrisError::MaxIterationsExceeded(
+                    constraints.max_iterations as usize,
+                ));
+            }
+        }
+
         spawn_save_message(context, "assistant".to_string(), &response, session).await?;
         messages.push(AssistantMessage {
             role: String::from("assistant"),
             content: content.clone(),
         });
 
-        loop {
+        'inner: loop {
             if response.is_done {
                 context.spinner.stop(response.message.clone()).await;
                 break 'outer;
@@ -72,9 +107,9 @@ pub async fn execute_agent_loop(
             let total = response.actions.len();
             let mut combined_output = String::new();
             let mut error_result: Option<IgrisError> = None;
+            let mut user_interaction_required = false;
 
-            // Execute all actions sequentially, stop on first failure
-            'actions: for (idx, action) in response.actions.iter().enumerate() {
+            for (idx, action) in response.actions.iter().enumerate() {
                 match action {
                     Action::ExecuteModule {
                         module,
@@ -91,11 +126,10 @@ pub async fn execute_agent_loop(
                                     module
                                 ));
                                 error_result = Some(IgrisError::SkillError(e.to_string()));
-                                break 'actions;
+                                break;
                             }
                         };
 
-                        // Log which command is running
                         if total > 1 {
                             context.spinner.add_log_line(format!(
                                 "\x1b[2m| [{}/{}] {}\x1b[0m",
@@ -138,7 +172,6 @@ pub async fn execute_agent_loop(
                                 }
                             }
                             Err(error) => {
-                                // Show which specific command failed
                                 context.spinner.add_log_line(format!(
                                     "\x1b[2m|   \x1b[31m[{}/{}] FAILED: {}\x1b[0m",
                                     idx + 1,
@@ -152,19 +185,142 @@ pub async fn execute_agent_loop(
                                     args,
                                     error
                                 )));
-                                break 'actions;
+                                break;
                             }
                         }
                     }
-                    _ => {}
+                    Action::PermissionRequest {
+                        action,
+                        description,
+                        risk_level,
+                        options,
+                    } => {
+                        context.spinner.stop(String::new()).await;
+                        user_interaction_required = true;
+                        let user_choice = prompt_user_permission(
+                            action,
+                            description,
+                            risk_level,
+                            options,
+                        )?;
+                        if !user_choice {
+                            return Err(IgrisError::PermissionDenied(format!(
+                                "User denied action: {}",
+                                description
+                            )));
+                        }
+                        context.spinner.start("Thinking...".to_string()).await;
+                    }
+                    Action::PromptUser {
+                        message,
+                        options,
+                    } => {
+                        context.spinner.stop(String::new()).await;
+                        user_interaction_required = true;
+                        let user_input = prompt_user_input(message, options)?;
+                        if !combined_output.is_empty() {
+                            combined_output.push_str("\n---\n");
+                        }
+                        combined_output.push_str(&format!(
+                            "[User response to prompt]: {}",
+                            user_input
+                        ));
+                        context.spinner.start("Thinking...".to_string()).await;
+                    }
+                    Action::RequestData {
+                        source,
+                        query,
+                        limit,
+                    } => {
+                        if source == "memory" {
+                            let memory_results = request_memory_data(
+                                context,
+                                query,
+                                *limit,
+                            )?;
+                            if !combined_output.is_empty() {
+                                combined_output.push_str("\n---\n");
+                            }
+                            combined_output.push_str(&memory_results);
+                        } else {
+                            let sys_info = format!(
+                                "[System Info Request] source={}, query={}",
+                                source, query
+                            );
+                            if !combined_output.is_empty() {
+                                combined_output.push_str("\n---\n");
+                            }
+                            combined_output.push_str(&sys_info);
+                        }
+                    }
+                    Action::GenerateChunk {
+                        module_name,
+                        chunk_index,
+                        total_chunks,
+                        code_chunk,
+                        dependencies,
+                    } => {
+                        // Placeholder for Self-Improvement Engine (Phase 3)
+                        let chunk_info = format!(
+                            "[CHUNK {}/{}] module={}, code_len={}, deps={:?}",
+                            chunk_index,
+                            total_chunks,
+                            module_name,
+                            code_chunk.len(),
+                            dependencies
+                        );
+                        context.spinner.add_log_line(format!(
+                            "\x1b[2m|   \x1b[33m{}\x1b[0m",
+                            chunk_info
+                        ));
+                        if !combined_output.is_empty() {
+                            combined_output.push_str("\n---\n");
+                        }
+                        combined_output.push_str(&chunk_info);
+                    }
+                    Action::RespondToUser => {
+                        context.spinner.add_log_line(format!(
+                            "\x1b[2m|   \x1b[36mRespond to user...\x1b[0m"
+                        ));
+                    }
+                }
+
+                if error_result.is_some() {
+                    break;
+                }
+                if user_interaction_required {
+                    break;
                 }
             }
 
             context
                 .spinner
                 .set_last_full_output(combined_output.clone());
-            // Single LLM round-trip after all actions complete (or fail)
+
             content = if let Some(err) = error_result {
+                fix_iteration += 1;
+                if fix_iteration >= context.config.execution.fix_iteration_limit {
+                    let final_state = format!(
+                        "[FIX ERROR] Max fix iterations reached ({}). Last task: {}. Error: {}",
+                        context.config.execution.fix_iteration_limit, response.message, err
+                    );
+                    spawn_save_message(
+                        context,
+                        "user".to_string(),
+                        &ActionResponse {
+                            message: final_state.clone(),
+                            is_done: true,
+                            actions: vec![],
+                            iteration,
+                            fix_iteration,
+                            constraints: None,
+                        },
+                        session,
+                    ).await?;
+                    return Err(IgrisError::MaxFixIterationsExceeded(
+                        context.config.execution.fix_iteration_limit as usize,
+                    ));
+                }
                 handle_error(
                     err,
                     content.clone(),
@@ -176,7 +332,29 @@ pub async fn execute_agent_loop(
                 )
                 .await?
             } else {
-                // Use summary for LLM context, full output stored in spinner
+                iteration += 1;
+                let max_iter = context.config.execution.iteration_limit;
+                if iteration >= max_iter {
+                    let final_state = format!(
+                        "[LOOP ERROR] Max iterations reached ({}). Last task: {}. Combined output: {}",
+                        max_iter, response.message, combined_output
+                    );
+                    spawn_save_message(
+                        context,
+                        "user".to_string(),
+                        &ActionResponse {
+                            message: final_state.clone(),
+                            is_done: true,
+                            actions: vec![],
+                            iteration,
+                            fix_iteration,
+                            constraints: None,
+                        },
+                        session,
+                    ).await?;
+                    return Err(IgrisError::MaxIterationsExceeded(max_iter as usize));
+                }
+
                 let task_object = build_task_object(
                     &response.message,
                     skills,
@@ -187,6 +365,9 @@ pub async fn execute_agent_loop(
                     message: combined_output.clone(),
                     is_done: true,
                     actions: vec![],
+                    iteration,
+                    fix_iteration,
+                    constraints: None,
                 };
                 spawn_save_message(context, "user".to_string(), &user_msg, session).await?;
                 messages.push(AssistantMessage {
@@ -210,10 +391,19 @@ pub async fn execute_agent_loop(
                 ask_llm(messages, &context.config, max_tokens).await?
             };
 
-            // Parse next LLM response, retry on parse error
             response = loop {
                 match serde_json::from_str::<ActionResponse>(&content) {
                     Ok(value) => {
+                        iteration = value.iteration;
+                        fix_iteration = value.fix_iteration;
+                        if let Some(ref constraints) = value.constraints {
+                            if iteration >= constraints.max_iterations {
+                                return Err(IgrisError::MaxIterationsExceeded(
+                                    constraints.max_iterations as usize,
+                                ));
+                            }
+                        }
+
                         spawn_save_message(context, "assistant".to_string(), &value, session)
                             .await?;
                         messages.push(AssistantMessage {
@@ -224,6 +414,29 @@ pub async fn execute_agent_loop(
                     }
                     Err(error) => {
                         eprintln!("System parse error: {}", error);
+                        fix_iteration += 1;
+                        if fix_iteration >= context.config.execution.fix_iteration_limit {
+                            let final_state = format!(
+                                "[FIX ERROR] Max fix iterations reached ({}). Last content: {}",
+                                context.config.execution.fix_iteration_limit, content
+                            );
+                            spawn_save_message(
+                                context,
+                                "user".to_string(),
+                                &ActionResponse {
+                                    message: final_state.clone(),
+                                    is_done: true,
+                                    actions: vec![],
+                                    iteration,
+                                    fix_iteration,
+                                    constraints: None,
+                                },
+                                session,
+                            ).await?;
+                            return Err(IgrisError::MaxFixIterationsExceeded(
+                                context.config.execution.fix_iteration_limit as usize,
+                            ));
+                        }
                         content = handle_error(
                             IgrisError::LlmInvalidResponse(error.to_string()),
                             content,
@@ -243,16 +456,123 @@ pub async fn execute_agent_loop(
     Ok(())
 }
 
-/// Handles errors in the agent loop.
-///
-/// - `save_raw_content`: if true, the raw `content` string (bad/unparsed LLM response)
-///   is saved to DB as an assistant message and pushed to `messages`.
-///   Set to `true` when content was never saved (e.g. parse error on fresh LLM output).
-///   Set to `false` when content was already saved (e.g. skill execution error after
-///   a successfully parsed response).
-///
-/// After saving, pushes the error as a user message to `messages` and calls
-/// `ask_llm` to get a fresh regenerated response.
+fn prompt_user_permission(
+    action: &str,
+    description: &str,
+    risk_level: &str,
+    options: &[String],
+) -> Result<bool, IgrisError> {
+    eprintln!(
+        "\n\x1b[1;33m[PERMISSION REQUEST]\x1b[0m"
+    );
+    eprintln!("  Action: \x1b[36m{}\x1b[0m", action);
+    eprintln!("  Description: \x1b[37m{}\x1b[0m", description);
+    eprintln!("  Risk level: \x1b[{}m{}\x1b[0m",
+        match risk_level {
+            "low" => "32",
+            "medium" => "33",
+            "high" => "31",
+            _ => "37",
+        },
+        risk_level
+    );
+
+    for (i, opt) in options.iter().enumerate() {
+        eprintln!("  \x1b[34m[{}]\x1b[0m {}", i + 1, opt);
+    }
+    eprint!("\x1b[1;34m?\x1b[0m Your choice (1-{}): ", options.len());
+    io::stderr().flush().map_err(|e| IgrisError::IoError(e.to_string()))?;
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| IgrisError::IoError(e.to_string()))?;
+    let input = input.trim().to_lowercase();
+
+    if input == "1" || input.starts_with('y') || input == "yes" || input == "разрешить" {
+        eprintln!("\x1b[32m[PERMISSION GRANTED]\x1b[0m");
+        Ok(true)
+    } else {
+        eprintln!("\x1b[31m[PERMISSION DENIED]\x1b[0m");
+        Ok(false)
+    }
+}
+
+fn prompt_user_input(message: &str, options: &[String]) -> Result<String, IgrisError> {
+    eprintln!(
+        "\n\x1b[1;36m[PROMPT USER]\x1b[0m"
+    );
+    eprintln!("  \x1b[37m{}\x1b[0m", message);
+
+    if !options.is_empty() {
+        for (i, opt) in options.iter().enumerate() {
+            eprintln!("  \x1b[34m[{}]\x1b[0m {}", i + 1, opt);
+        }
+        eprint!("\x1b[1;34m?\x1b[0m Your choice (1-{}): ", options.len());
+    } else {
+        eprint!("\x1b[1;34m?\x1b[0m Your response: ");
+    }
+    io::stderr().flush().map_err(|e| IgrisError::IoError(e.to_string()))?;
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| IgrisError::IoError(e.to_string()))?;
+    let input = input.trim().to_string();
+
+    if !options.is_empty() {
+        if let Ok(num) = input.parse::<usize>() {
+            if num >= 1 && num <= options.len() {
+                return Ok(options[num - 1].clone());
+            }
+        }
+        // fallback: return raw input
+    }
+
+    Ok(input)
+}
+
+fn request_memory_data(
+    context: &CoreContext,
+    query: &str,
+    limit: u32,
+) -> Result<String, IgrisError> {
+    use crate::db::{search_messages, get_topics};
+
+    let connection = context.connection.lock().unwrap();
+    let mut results = String::new();
+
+    // Search by topics
+    let topics = get_topics(&connection)?;
+    let matching_topics: Vec<String> = topics
+        .into_iter()
+        .filter(|t| query.to_lowercase().contains(&t.to_lowercase()))
+        .collect();
+
+    if !matching_topics.is_empty() {
+        results.push_str(&format!(
+            "[Memory] Matching topics: {:?}\n",
+            matching_topics
+        ));
+    }
+
+    // Search messages by keyword
+    if let Ok(records) = search_messages(&connection, query, limit as i64) {
+        for record in &records {
+            results.push_str(&format!(
+                "- [{}] {}: {}\n",
+                record.timestamp, record.role, record.content
+            ));
+        }
+    }
+
+    if results.is_empty() {
+        results = format!("[Memory] No results found for query: {}", query);
+    }
+
+    Ok(results)
+}
+
 async fn handle_error(
     error: IgrisError,
     content: String,
@@ -262,6 +582,25 @@ async fn handle_error(
     session: &Session,
     save_raw_content: bool,
 ) -> Result<String, IgrisError> {
+    // Non-recoverable errors: immediately return to user
+    if should_abort_on_error(&error) {
+        let error_msg = format!("[IGRIS ERROR] Non-recoverable error: {}\nTask has been stopped.", error);
+        eprintln!("\x1b[31m{}\x1b[0m", error_msg);
+        spawn_save_message(
+            context,
+            "user".to_string(),
+            &ActionResponse {
+                message: error_msg.clone(),
+                is_done: true,
+                actions: vec![],
+                iteration: 0,
+                fix_iteration: 0,
+                constraints: None,
+            },
+            session,
+        ).await?;
+        return Err(error);
+    }
     if save_raw_content {
         messages.push(AssistantMessage {
             role: String::from("assistant"),
@@ -274,6 +613,9 @@ async fn handle_error(
                 message: content.clone(),
                 is_done: false,
                 actions: vec![],
+                iteration: 0,
+                fix_iteration: 0,
+                constraints: None,
             },
             session,
         )
@@ -289,6 +631,9 @@ async fn handle_error(
             message: error_str.clone(),
             is_done: true,
             actions: vec![],
+            iteration: 0,
+            fix_iteration: 0,
+            constraints: None,
         },
         session,
     )
@@ -305,4 +650,18 @@ async fn handle_error(
     let new_content = ask_llm(messages, &context.config, max_tokens).await?;
 
     Ok(new_content)
+}
+
+/// Determines if an error should abort the agent loop immediately
+/// without asking LLM for a fix.
+fn should_abort_on_error(error: &IgrisError) -> bool {
+    matches!(
+        error,
+        IgrisError::PermissionDenied(_)
+            | IgrisError::LlmUnavailable(_)
+            | IgrisError::LlmTimeout(_)
+            | IgrisError::ConfigError(_)
+            | IgrisError::MaxIterationsExceeded(_)
+            | IgrisError::MaxFixIterationsExceeded(_)
+    )
 }
