@@ -7,6 +7,7 @@ pub mod gui_skill;
 pub mod shell_executor;
 pub mod user_profile_skill;
 pub mod web_search_skill;
+pub mod voice_skill;
 
 pub trait SkillModule {
     fn get_metadata(&self) -> &ModuleMetadata;
