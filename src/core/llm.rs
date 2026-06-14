@@ -5,13 +5,15 @@ use crate::{configs::llm::AppConfig, error::IgrisError, models::assistant::Assis
 pub async fn ask_llm(
     messages: &Vec<AssistantMessage>,
     config: &AppConfig,
+    max_tokens: u32,
 ) -> Result<String, IgrisError> {
     let client = reqwest::Client::new();
 
     let request_body = serde_json::json!({
         "model": &config.llm.model,
         "messages": messages,
-        "stream": false
+        "stream": false,
+        "max_tokens": max_tokens
     })
     .to_string();
 
@@ -33,7 +35,11 @@ pub async fn ask_llm(
     return Ok(extract_content(&response)?);
 }
 
-pub async fn generate_topics(message: String, config: &AppConfig) -> Result<String, IgrisError> {
+pub async fn generate_topics(
+    message: String,
+    config: &AppConfig,
+    max_tokens: u32,
+) -> Result<String, IgrisError> {
     let client = reqwest::Client::new();
 
     let messages: Vec<AssistantMessage> = vec![
@@ -51,6 +57,7 @@ pub async fn generate_topics(message: String, config: &AppConfig) -> Result<Stri
         "model": &config.topic_llm.model,
         "messages": messages,
         "stream": false,
+        "max_tokens": max_tokens,
         "thinking": {
             "type": "disabled"
         }
@@ -80,9 +87,30 @@ fn extract_content(response: &str) -> Result<String, IgrisError> {
         .as_str()
         .unwrap_or_default()
         .to_string()
-        .replace("```json", "")
-        .replace("```", "");
+        .replace("", "")
+        .replace("", "");
 
-    println!("Extracted content: {}", content);
-    Ok(content)
+    Ok(remove_markdown_wrapper(&content))
+}
+
+fn remove_markdown_wrapper(content: &str) -> String {
+    let trimmed = content.trim();
+
+    let after_open = if let Some(rest) = trimmed.strip_prefix("```json") {
+        rest
+    } else if let Some(rest) = trimmed.strip_prefix("```") {
+        rest
+    } else {
+        return trimmed.to_string();
+    };
+
+    if let Some(close_pos) = after_open.rfind("\n```") {
+        return after_open[..close_pos].trim().to_string();
+    }
+
+    if let Some(inner) = after_open.trim_end().strip_suffix("```") {
+        return inner.trim().to_string();
+    }
+
+    after_open.trim().to_string()
 }

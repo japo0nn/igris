@@ -43,9 +43,7 @@ fn build_skills_context(
 
     for skill in skills {
         let skill_metadata = skill.get_metadata();
-
         let skill_methods = skill.available_methods();
-
         let mut context_skill_methods: Vec<TaskObjectSkillMethod> = Vec::new();
 
         for method in skill_methods {
@@ -97,7 +95,8 @@ async fn save_message_with_topics(
 
     let topic_json = serde_json::json!(topic_request).to_string();
 
-    let content = generate_topics(topic_json, &context.config).await?;
+    let max_tokens = context.config.topic_llm.max_tokens;
+    let content = generate_topics(topic_json, &context.config, max_tokens).await?;
 
     let generated_topics: Vec<String> = serde_json::from_str(&content).unwrap_or_default();
 

@@ -35,6 +35,8 @@ pub struct LlmConfig {
     pub context_token_limit: usize,
     #[serde(default = "default_retention_days")]
     pub retention_days: i32,
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -43,6 +45,8 @@ pub struct TopicLlmConfig {
     #[serde(default = "default_vision_model")]
     pub vision_model: String,
     pub system_prompt: String,
+    #[serde(default = "default_topic_max_tokens")]
+    pub max_tokens: u32,
 }
 
 fn default_context_limit() -> usize {
@@ -51,6 +55,14 @@ fn default_context_limit() -> usize {
 
 fn default_retention_days() -> i32 {
     7
+}
+
+fn default_max_tokens() -> u32 {
+    16000
+}
+
+fn default_topic_max_tokens() -> u32 {
+    1024
 }
 
 pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::Error>> {
@@ -64,4 +76,5 @@ pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::E
 
     Ok((config, secrets))
 }
+
 fn default_vision_model() -> String { String::from("cc/claude-sonnet-4-6") }

@@ -17,15 +17,13 @@ pub async fn execute_agent_loop(
     skills: &Vec<Box<dyn SkillModule>>,
     session: &Session,
 ) -> Result<(), IgrisError> {
-    // CONTEXT TOKEN MANAGEMENT: Проверяем размер контекста перед первым ask_llm
     let token_limit = context.config.llm.context_token_limit;
     let estimated_tokens = db::estimate_context_tokens(
         &context.connection.lock().unwrap(),
         &session.id.to_string(),
     ).unwrap_or(0);
-    
+
     if estimated_tokens > token_limit {
-        // Обрезаем старые сообщения если превышен лимит
         let retention_days = context.config.llm.retention_days;
         let _ = db::trim_old_messages(
             &context.connection.lock().unwrap(),
@@ -33,8 +31,9 @@ pub async fn execute_agent_loop(
             retention_days,
         );
     }
-    
-    let mut content = ask_llm(&messages, &context.config).await?;
+
+    let max_tokens = context.config.llm.max_tokens;
+    let mut content = ask_llm(&messages, &context.config, max_tokens).await?;
     loop {
         match serde_json::from_str::<ActionResponse>(&content) {
             Ok(mut response) => {
@@ -61,7 +60,7 @@ pub async fn execute_agent_loop(
                             } => {
                                 let skill = find_skill(skills, module)?;
 
-                                let execution = skill.execute(method, args);
+                                let execution = tokio::task::block_in_place(|| skill.execute(method, args));
 
                                 match execution {
                                     Ok(result) => match &result {
@@ -98,12 +97,11 @@ pub async fn execute_agent_loop(
                                             eprintln!("Assistant: {}: {}", response.message, args);
                                             eprintln!("System: {}", output);
 
-                                            // CONTEXT TOKEN MANAGEMENT: Проверяем перед каждым ask_llm
                                             let estimated_tokens = db::estimate_context_tokens(
                                                 &context.connection.lock().unwrap(),
                                                 &session.id.to_string(),
                                             ).unwrap_or(0);
-                                            
+
                                             if estimated_tokens > token_limit {
                                                 let retention_days = context.config.llm.retention_days;
                                                 let _ = db::trim_old_messages(
@@ -113,7 +111,7 @@ pub async fn execute_agent_loop(
                                                 );
                                             }
 
-                                            content = ask_llm(&messages, &context.config).await?;
+                                            content = ask_llm(&messages, &context.config, max_tokens).await?;
 
                                             loop {
                                                 match serde_json::from_str::<ActionResponse>(
