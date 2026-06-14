@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -6,7 +6,8 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 const API_URL = 'http://localhost:3001'
 
-function MarkdownMessage({ content }) {
+// Memoized — не ре-рендерится при изменении инпута
+const MarkdownMessage = memo(function MarkdownMessage({ content }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -106,11 +107,73 @@ function MarkdownMessage({ content }) {
       {content}
     </ReactMarkdown>
   )
-}
+})
+
+// Memoized сообщение — не ре-рендерится если контент не изменился
+const MessageBubble = memo(function MessageBubble({ msg }) {
+  if (msg.role === 'user') {
+    return (
+      <div style={styles.userBubbleWrap}>
+        <div style={styles.userBubble}>
+          <pre style={styles.msgText}>{msg.content}</pre>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div style={styles.aiBubbleWrap}>
+      <div style={styles.aiAvatar}>⚡</div>
+      <div style={styles.aiBubble}>
+        <div style={styles.markdownBody}>
+          <MarkdownMessage content={msg.content} />
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// Отдельный компонент для инпута — его ре-рендеры не затрагивают список сообщений
+const ChatInput = memo(function ChatInput({ onSend, loading }) {
+  const [input, setInput] = useState('')
+  const textareaRef = useRef(null)
+
+  const handleSend = useCallback(() => {
+    if (!input.trim() || loading) return
+    onSend(input)
+    setInput('')
+  }, [input, loading, onSend])
+
+  const handleKey = useCallback((e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }, [handleSend])
+
+  return (
+    <div style={styles.inputArea}>
+      <textarea
+        ref={textareaRef}
+        style={styles.input}
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        onKeyDown={handleKey}
+        placeholder="Message IGRIS... (Enter to send, Shift+Enter for newline)"
+        rows={1}
+      />
+      <button
+        style={loading ? styles.sendBtnDisabled : styles.sendBtn}
+        onClick={handleSend}
+        disabled={loading}
+      >
+        ➤
+      </button>
+    </div>
+  )
+})
 
 function App() {
   const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef(null)
 
@@ -132,10 +195,7 @@ function App() {
     }
   }
 
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return
-    const userText = input
-    setInput('')
+  const sendMessage = useCallback(async (userText) => {
     setLoading(true)
     setMessages(prev => [...prev, { role: 'user', content: userText }])
     try {
@@ -149,14 +209,7 @@ function App() {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Error: could not reach IGRIS backend.' }])
     }
     setLoading(false)
-  }
-
-  const handleKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
-  }
+  }, [])
 
   return (
     <div style={styles.root}>
@@ -169,7 +222,7 @@ function App() {
         <div style={styles.sidebarItem} onClick={fetchHistory}>↺ Refresh History</div>
         <div style={styles.sidebarItem} onClick={() => setMessages([])}>+ New Chat</div>
         <div style={styles.sidebarFooter}>
-          <div style={styles.sidebarFooterText}>v0.1.0 · Sandbox</div>
+          <div style={styles.sidebarFooterText}>v0.1.0 · Main</div>
         </div>
       </aside>
       <main style={styles.main}>
@@ -187,18 +240,7 @@ function App() {
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} style={msg.role === 'user' ? styles.userBubbleWrap : styles.aiBubbleWrap}>
-              {msg.role === 'assistant' && <div style={styles.aiAvatar}>⚡</div>}
-              <div style={msg.role === 'user' ? styles.userBubble : styles.aiBubble}>
-                {msg.role === 'user' ? (
-                  <pre style={styles.msgText}>{msg.content}</pre>
-                ) : (
-                  <div style={styles.markdownBody}>
-                    <MarkdownMessage content={msg.content} />
-                  </div>
-                )}
-              </div>
-            </div>
+            <MessageBubble key={i} msg={msg} />
           ))}
           {loading && (
             <div style={styles.aiBubbleWrap}>
@@ -210,19 +252,7 @@ function App() {
           )}
           <div ref={messagesEndRef} />
         </div>
-        <div style={styles.inputArea}>
-          <textarea
-            style={styles.input}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="Message IGRIS... (Enter to send, Shift+Enter for newline)"
-            rows={1}
-          />
-          <button style={loading ? styles.sendBtnDisabled : styles.sendBtn} onClick={sendMessage} disabled={loading}>
-            ➤
-          </button>
-        </div>
+        <ChatInput onSend={sendMessage} loading={loading} />
       </main>
     </div>
   )
