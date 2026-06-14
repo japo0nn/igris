@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         spinner,
     };
 
-    let skills = init_modules_metadata(&context, &secrets)?;
+    let skills = init_modules_metadata(&context)?;
     let session = create_session(&context.connection.lock().unwrap())?;
 
     let initial_history = load_previous_session_history(&context);

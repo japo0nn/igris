@@ -97,7 +97,7 @@ pub async fn execute_agent_loop(
             content: content.clone(),
         });
 
-        'inner: loop {
+        loop {
             if response.is_done {
                 context.spinner.stop(response.message.clone()).await;
                 break 'outer;
