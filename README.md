@@ -188,7 +188,7 @@ IGRIS/
 
 IGRIS comes with a pre-configured `config.toml`. You don't need to modify it to get started.
 
-> **Note:** IGRIS uses **Omniroute** for LLM capabilities. Sign up at [omniroute.ai](https://omniroute.ai) to get your API key.
+> **Note:** IGRIS uses **OmniRoute** for LLM routing capabilities. OmniRoute is an open-source local LLM proxy — see [github.com/diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute) for setup instructions.
 
 ### Setup: Create `secret.toml`
 
