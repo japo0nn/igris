@@ -50,9 +50,7 @@ pub async fn chat_loopback(
         }
     }
 
-    let config = Builder::new()
-        .auto_add_history(true)
-        .build();
+    let config = Builder::new().auto_add_history(true).build();
     let mut rl = Editor::with_config(config)?;
     rl.set_helper(Some(IgrisHelper));
 
@@ -79,22 +77,39 @@ pub async fn chat_loopback(
 
                 if trimmed.starts_with('/') {
                     let msg = handle_slash_command(
-                        &trimmed, &mut rl, &history_path,
-                        context, session, skills, &mut messages,
+                        &trimmed,
+                        &mut rl,
+                        &history_path,
+                        context,
+                        session,
+                        skills,
+                        &mut messages,
                     )?;
                     if let Some(m) = msg {
                         process_user_input(
-                            m, &mut rl, &history_path,
-                            context, session, skills, &mut messages,
-                        ).await?;
+                            m,
+                            &mut rl,
+                            &history_path,
+                            context,
+                            session,
+                            skills,
+                            &mut messages,
+                        )
+                        .await?;
                     }
                     continue;
                 }
 
                 process_user_input(
-                    trimmed, &mut rl, &history_path,
-                    context, session, skills, &mut messages,
-                ).await?;
+                    trimmed,
+                    &mut rl,
+                    &history_path,
+                    context,
+                    session,
+                    skills,
+                    &mut messages,
+                )
+                .await?;
             }
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
                 println!();
@@ -107,7 +122,10 @@ pub async fn chat_loopback(
         }
 
         if let Err(e) = rl.save_history(&history_path) {
-            eprintln!("\x1b[33m[IGRIS] Warning: failed to save history: {}\x1b[0m", e);
+            eprintln!(
+                "\x1b[33m[IGRIS] Warning: failed to save history: {}\x1b[0m",
+                e
+            );
         }
     }
 
@@ -131,7 +149,7 @@ fn handle_slash_command(
     cmd: &str,
     rl: &mut Editor<IgrisHelper, FileHistory>,
     _history_path: &PathBuf,
-    context: &CoreContext,
+    _context: &CoreContext,
     _session: &Session,
     _skills: &Vec<Box<dyn SkillModule>>,
     _messages: &mut Vec<AssistantMessage>,
@@ -158,7 +176,11 @@ fn handle_slash_command(
             if entries.is_empty() {
                 println!("(empty)");
             } else {
-                let start = if entries.len() > 20 { entries.len() - 20 } else { 0 };
+                let start = if entries.len() > 20 {
+                    entries.len() - 20
+                } else {
+                    0
+                };
                 for (i, entry) in entries[start..].iter().enumerate() {
                     let display = if entry.len() > 80 {
                         format!("{}...", &entry[..80])
@@ -239,7 +261,6 @@ async fn process_user_input(
     skills: &Vec<Box<dyn SkillModule>>,
     messages: &mut Vec<AssistantMessage>,
 ) -> Result<(), IgrisError> {
-
     let task_object = build_task_object(&input, skills, context, None)?;
     messages.push(AssistantMessage {
         role: "user".to_string(),
@@ -261,7 +282,10 @@ async fn process_user_input(
     execute_agent_loop(&mut *messages, context, skills, session).await?;
 
     if let Err(e) = rl.save_history(history_path) {
-        eprintln!("\x1b[33m[IGRIS] Warning: failed to save history: {}\x1b[0m", e);
+        eprintln!(
+            "\x1b[33m[IGRIS] Warning: failed to save history: {}\x1b[0m",
+            e
+        );
     }
 
     Ok(())
@@ -281,9 +305,8 @@ impl Completer for IgrisHelper {
         _ctx: &Context<'_>,
     ) -> Result<(usize, Vec<Pair>), ReadlineError> {
         let commands = [
-            "/help", "/h", "/clear", "/c", "/exit", "/q",
-            "/history", "/edit", "/e",
-            "/output", "/o",
+            "/help", "/h", "/clear", "/c", "/exit", "/q", "/history", "/edit", "/e", "/output",
+            "/o",
         ];
         let candidates: Vec<Pair> = commands
             .iter()

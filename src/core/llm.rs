@@ -5,7 +5,7 @@ use crate::{configs::llm::AppConfig, error::IgrisError, models::assistant::Assis
 pub async fn ask_llm(
     messages: &Vec<AssistantMessage>,
     config: &AppConfig,
-    max_tokens: u32,
+    _max_tokens: u32,
 ) -> Result<String, IgrisError> {
     let client = reqwest::Client::new();
 
