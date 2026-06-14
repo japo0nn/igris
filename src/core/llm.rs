@@ -29,8 +29,6 @@ pub async fn ask_llm(
         .text()
         .await?;
 
-    println!("API RESPONSE: {}", response);
-
     return Ok(extract_content(&response)?);
 }
 
