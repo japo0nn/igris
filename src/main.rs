@@ -23,6 +23,7 @@ pub mod models;
 pub mod registry;
 pub mod skills;
 pub mod supervisor;
+pub mod voice;
 pub mod api;
 
 #[tokio::main]
@@ -110,6 +111,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("[IGRIS] API server running on http://localhost:3001");
         let listener = tokio::net::TcpListener::bind(addr).await?;
         axum::serve(listener, app).await?;
+    } else if args.len() >= 2 && (args[1] == "--voice" || args[1] == "-v") {
+        // Voice mode: continuous listening + agent loop
+        let groq_api_key = secrets.voice
+            .as_ref()
+            .map(|v| v.groq_api_key.clone())
+            .unwrap_or_else(|| {
+                eprintln!("[IGRIS] No [voice.groq_api_key] found in secrets.toml");
+                std::process::exit(1);
+            });
+        
+        let rx = crate::voice::continuous::start_listener(&groq_api_key)
+            .expect("Failed to start voice listener");
+
+        let mut messages = vec![
+            AssistantMessage {
+                role: "system".to_string(),
+                content: context.config.llm.system_prompt.clone(),
+            }
+        ];
+        for msg in initial_history {
+            if msg.role != "system" {
+                messages.push(msg);
+            }
+        }
+
+        eprintln!("[Voice] Listening... Press Ctrl+C to exit.");
+        
+        while let Ok(text) = rx.recv() {
+            let task_object = crate::core::task::build_task_object(&text, &skills, &context, None)?;
+            let mut session_messages = messages.clone();
+            session_messages.push(AssistantMessage {
+                role: "user".to_string(),
+                content: serde_json::json!(&task_object).to_string(),
+            });
+
+            crate::core::agent::execute_agent_loop(
+                &mut session_messages,
+                &context,
+                &skills,
+                &session
+            ).await?;
+
+            // TTS: speak the last assistant message
+                        if let Some(last) = session_messages.iter().rev().find(|m| m.role == "assistant") {
+                            if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&last.content) {
+                                if let Some(msg) = json_value.get("message").and_then(|v| v.as_str()) {
+                                    if !msg.is_empty() {
+                                        let _ = std::process::Command::new("say")
+                                            .arg(msg)
+                                            .status();
+                                        crate::voice::continuous::trigger_cooldown();
+                                    }
+                                }
+                            }
+                        }
+        }
     } else {
         chat_loopback(&context, &session, &skills, initial_history).await?;
     }
