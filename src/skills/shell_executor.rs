@@ -47,9 +47,10 @@ impl SkillModule for ShellExecutor {
                 Ok(output) => {
                     if !output.status.success() {
                         let stderr = String::from_utf8_lossy(&output.stderr);
-                        return Err(SkillError::ExecutionFailed(
-                            format!("Command exited with status {}: {}", output.status, stderr),
-                        ));
+                        return Err(SkillError::ExecutionFailed(format!(
+                            "Command exited with status {}: {}",
+                            output.status, stderr
+                        )));
                     }
 
                     if output.stdout.is_empty() {
@@ -72,9 +73,10 @@ impl SkillModule for ShellExecutor {
                     }
                 }
                 Err(e) => {
-                    return Err(SkillError::ExecutionFailed(
-                        format!("Failed to execute command: {}", e),
-                    ));
+                    return Err(SkillError::ExecutionFailed(format!(
+                        "Failed to execute command: {}",
+                        e
+                    )));
                 }
             }
         } else {

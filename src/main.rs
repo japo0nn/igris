@@ -14,6 +14,7 @@ use crate::{
     registry::init_modules_metadata,
 };
 
+pub mod api;
 pub mod configs;
 pub mod core;
 pub mod db;
@@ -24,7 +25,6 @@ pub mod registry;
 pub mod skills;
 pub mod supervisor;
 pub mod voice;
-pub mod api;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,7 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let initial_history = load_previous_session_history(&context);
     if !initial_history.is_empty() {
-        eprintln!("[IGRIS] Loaded {} messages from previous session.", initial_history.len());
+        eprintln!(
+            "[IGRIS] Loaded {} messages from previous session.",
+            initial_history.len()
+        );
     }
 
     let args: Vec<String> = env::args().collect();
@@ -81,9 +84,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &context,
             "user".to_string(),
             &ActionResponse {
-            iteration: 0,
-            fix_iteration: 0,
-            constraints: None,
+                iteration: 0,
+                fix_iteration: 0,
+                constraints: None,
                 message: message,
                 is_done: true,
                 actions: vec![],
@@ -101,7 +104,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  igris -m <text>           - same as --message");
         println!("  igris --help              - show this help");
     } else if args.len() == 2 && (args[1] == "--server" || args[1] == "-s") {
-        let binary_path = std::env::current_exe().unwrap().to_string_lossy().to_string();
+        let binary_path = std::env::current_exe()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         let state = api::AppState {
             connection: context.connection.clone(),
             binary_path,
@@ -113,23 +119,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         axum::serve(listener, app).await?;
     } else if args.len() >= 2 && (args[1] == "--voice" || args[1] == "-v") {
         // Voice mode: continuous listening + agent loop
-        let groq_api_key = secrets.voice
+        let groq_api_key = secrets
+            .voice
             .as_ref()
             .map(|v| v.groq_api_key.clone())
             .unwrap_or_else(|| {
                 eprintln!("[IGRIS] No [voice.groq_api_key] found in secrets.toml");
                 std::process::exit(1);
             });
-        
+
         let rx = crate::voice::continuous::start_listener(&groq_api_key)
             .expect("Failed to start voice listener");
 
-        let mut messages = vec![
-            AssistantMessage {
-                role: "system".to_string(),
-                content: context.config.llm.system_prompt.clone(),
-            }
-        ];
+        let mut messages = vec![AssistantMessage {
+            role: "system".to_string(),
+            content: context.config.llm.system_prompt.clone(),
+        }];
         for msg in initial_history {
             if msg.role != "system" {
                 messages.push(msg);
@@ -137,7 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         eprintln!("[Voice] Listening... Press Ctrl+C to exit.");
-        
+
         while let Ok(text) = rx.recv() {
             let task_object = crate::core::task::build_task_object(&text, &skills, &context, None)?;
             let mut session_messages = messages.clone();
@@ -150,22 +155,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &mut session_messages,
                 &context,
                 &skills,
-                &session
-            ).await?;
+                &session,
+            )
+            .await?;
 
             // TTS: speak the last assistant message
-                        if let Some(last) = session_messages.iter().rev().find(|m| m.role == "assistant") {
-                            if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&last.content) {
-                                if let Some(msg) = json_value.get("message").and_then(|v| v.as_str()) {
-                                    if !msg.is_empty() {
-                                        let _ = std::process::Command::new("say")
-                                            .arg(msg)
-                                            .status();
-                                        crate::voice::continuous::trigger_cooldown();
-                                    }
-                                }
-                            }
+            if let Some(last) = session_messages
+                .iter()
+                .rev()
+                .find(|m| m.role == "assistant")
+            {
+                if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&last.content) {
+                    if let Some(msg) = json_value.get("message").and_then(|v| v.as_str()) {
+                        if !msg.is_empty() {
+                            let _ = std::process::Command::new("say").arg(msg).status();
+                            crate::voice::continuous::trigger_cooldown();
                         }
+                    }
+                }
+            }
         }
     } else {
         chat_loopback(&context, &session, &skills, initial_history).await?;

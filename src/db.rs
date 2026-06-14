@@ -177,7 +177,7 @@ pub fn search_messages(
          FROM messages 
          WHERE content LIKE ?1 
          ORDER BY timestamp DESC 
-         LIMIT ?2"
+         LIMIT ?2",
     )?;
     let messages = stmt
         .query_map(params![pattern, limit], |row| {
@@ -230,21 +230,22 @@ pub fn get_session_context_with_limit(
          FROM messages 
          WHERE session_id = ?1 
          ORDER BY timestamp DESC 
-         LIMIT ?2"
+         LIMIT ?2",
     )?;
 
-    let messages = stmt.query_map(params![session_id, max_messages], |row| {
-        Ok(Message {
-            id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap_or(Uuid::nil()),
-            session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
-            role: row.get(2)?,
-            content: row.get(3)?,
-            action: row.get(4)?,
-            is_done: row.get::<_, i32>(5)? != 0,
-            timestamp: Local::now(),
-        })
-    })?
-    .collect::<Result<Vec<_>, _>>()?;
+    let messages = stmt
+        .query_map(params![session_id, max_messages], |row| {
+            Ok(Message {
+                id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap_or(Uuid::nil()),
+                session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
+                role: row.get(2)?,
+                content: row.get(3)?,
+                action: row.get(4)?,
+                is_done: row.get::<_, i32>(5)? != 0,
+                timestamp: Local::now(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(messages)
 }
@@ -269,9 +270,8 @@ pub fn estimate_context_tokens(
     connection: &Connection,
     session_id: &str,
 ) -> Result<usize, IgrisError> {
-    let mut stmt = connection.prepare(
-        "SELECT SUM(LENGTH(content)) FROM messages WHERE session_id = ?1"
-    )?;
+    let mut stmt =
+        connection.prepare("SELECT SUM(LENGTH(content)) FROM messages WHERE session_id = ?1")?;
 
     let total_chars: i32 = stmt.query_row(params![session_id], |row| {
         row.get::<_, Option<i32>>(0).map(|v| v.unwrap_or(0))
@@ -293,12 +293,11 @@ pub fn get_context_paginated(
          FROM messages 
          WHERE session_id = ?1 
          ORDER BY timestamp DESC 
-         LIMIT ?2 OFFSET ?3"
+         LIMIT ?2 OFFSET ?3",
     )?;
 
-    let messages = stmt.query_map(
-        rusqlite::params![session_id, page_size, offset],
-        |row| {
+    let messages = stmt
+        .query_map(rusqlite::params![session_id, page_size, offset], |row| {
             Ok(Message {
                 id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap_or(Uuid::nil()),
                 session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
@@ -308,9 +307,8 @@ pub fn get_context_paginated(
                 is_done: row.get::<_, i32>(5)? != 0,
                 timestamp: Local::now(),
             })
-        },
-    )?
-    .collect::<Result<Vec<_>, _>>()?;
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(messages)
 }

@@ -1,9 +1,9 @@
 use axum::{
+    Router,
     extract::State,
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
@@ -69,7 +69,10 @@ async fn history_handler(
                 row.get::<_, String>(1)?,
                 row.get::<_, bool>(2)?,
             ))
-        }).unwrap().filter_map(|r| r.ok()).collect::<Vec<_>>()
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect::<Vec<_>>()
     };
 
     let history: Vec<HistoryMessage> = raw_messages
@@ -95,7 +98,10 @@ async fn history_handler(
                 return None;
             }
 
-            Some(HistoryMessage { role, content: text })
+            Some(HistoryMessage {
+                role,
+                content: text,
+            })
         })
         .collect();
 

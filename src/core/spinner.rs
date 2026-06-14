@@ -1,9 +1,9 @@
+use crate::core::markdown::render_markdown;
 use std::io::Write;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use crate::core::markdown::render_markdown;
 
 const SPINNER_CHARS: &[u8] = b"-\\|/";
 

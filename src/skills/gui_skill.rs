@@ -30,7 +30,9 @@ impl GuiSkill {
                 name: "GuiSkill".to_string(),
                 version: "0.1.0".to_string(),
                 _type: crate::models::metadata::ModuleType::Persistent,
-                description: "GUI automation: control mouse, keyboard, take screenshots and open URLs.".to_string(),
+                description:
+                    "GUI automation: control mouse, keyboard, take screenshots and open URLs."
+                        .to_string(),
                 author: Some("IGRIS".to_string()),
             },
             llm_config,
@@ -111,10 +113,11 @@ impl GuiSkill {
     fn analyze_screen(&self, question: &str) -> Result<SkillOutput, SkillError> {
         let path = "/tmp/igris_screen.png";
 
-        let img_bytes = std::fs::read(path)
-            .map_err(|_| SkillError::ExecutionFailed(
-                "No screenshot found. Call 'screenshot' method first.".to_string()
-            ))?;
+        let img_bytes = std::fs::read(path).map_err(|_| {
+            SkillError::ExecutionFailed(
+                "No screenshot found. Call 'screenshot' method first.".to_string(),
+            )
+        })?;
 
         let img_b64 = BASE64.encode(&img_bytes);
 
@@ -154,11 +157,13 @@ impl GuiSkill {
             .json(&payload)
             .timeout(Duration::from_secs(60))
             .send()
-            .map_err(|e| SkillError::ExecutionFailed(format!("Vision API request failed: {}", e)))?;
+            .map_err(|e| {
+                SkillError::ExecutionFailed(format!("Vision API request failed: {}", e))
+            })?;
 
-        let json: serde_json::Value = response
-            .json()
-            .map_err(|e| SkillError::ExecutionFailed(format!("Failed to parse vision response: {}", e)))?;
+        let json: serde_json::Value = response.json().map_err(|e| {
+            SkillError::ExecutionFailed(format!("Failed to parse vision response: {}", e))
+        })?;
 
         let content = json["choices"][0]["message"]["content"]
             .as_str()
@@ -166,9 +171,10 @@ impl GuiSkill {
             .to_string();
 
         if content.is_empty() {
-            return Err(SkillError::ExecutionFailed(
-                format!("Vision model returned empty response. Full response: {}", json)
-            ));
+            return Err(SkillError::ExecutionFailed(format!(
+                "Vision model returned empty response. Full response: {}",
+                json
+            )));
         }
 
         // Delete screenshot after analysis to avoid clutter
@@ -182,9 +188,12 @@ fn take_screenshot() -> Result<SkillOutput, SkillError> {
     let path = "/tmp/igris_screen.png";
     let screens = Screen::all()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to get screens: {}", e)))?;
-    let screen = screens.into_iter().next()
+    let screen = screens
+        .into_iter()
+        .next()
         .ok_or_else(|| SkillError::ExecutionFailed("No screen found".to_string()))?;
-    let image = screen.capture()
+    let image = screen
+        .capture()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to capture screen: {}", e)))?;
     let orig_width = image.width();
     let orig_height = image.height();
@@ -196,12 +205,15 @@ fn take_screenshot() -> Result<SkillOutput, SkillError> {
         let new_w = (orig_width as f32 * scale) as u32;
         let new_h = (orig_height as f32 * scale) as u32;
         use screenshots::image::{DynamicImage, imageops::FilterType};
-        DynamicImage::ImageRgba8(image).resize(new_w, new_h, FilterType::Triangle).to_rgba8()
+        DynamicImage::ImageRgba8(image)
+            .resize(new_w, new_h, FilterType::Triangle)
+            .to_rgba8()
     } else {
         image
     };
 
-    final_image.save(path)
+    final_image
+        .save(path)
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to save screenshot: {}", e)))?;
 
     Ok(SkillOutput::Text(format!(
@@ -213,10 +225,12 @@ fn take_screenshot() -> Result<SkillOutput, SkillError> {
 fn mouse_click(args: &str) -> Result<SkillOutput, SkillError> {
     let (x, y) = parse_coordinates(args)?;
     let mut enigo = create_enigo()?;
-    enigo.move_mouse(x, y, Coordinate::Abs)
+    enigo
+        .move_mouse(x, y, Coordinate::Abs)
         .map_err(|e| SkillError::ExecutionFailed(e.to_string()))?;
     thread::sleep(Duration::from_millis(50));
-    enigo.button(Button::Left, Click)
+    enigo
+        .button(Button::Left, Click)
         .map_err(|e| SkillError::ExecutionFailed(e.to_string()))?;
     Ok(SkillOutput::Text(format!("Clicked at ({}, {})", x, y)))
 }
@@ -224,14 +238,16 @@ fn mouse_click(args: &str) -> Result<SkillOutput, SkillError> {
 fn move_mouse_to(args: &str) -> Result<SkillOutput, SkillError> {
     let (x, y) = parse_coordinates(args)?;
     let mut enigo = create_enigo()?;
-    enigo.move_mouse(x, y, Coordinate::Abs)
+    enigo
+        .move_mouse(x, y, Coordinate::Abs)
         .map_err(|e| SkillError::ExecutionFailed(e.to_string()))?;
     Ok(SkillOutput::Text(format!("Mouse moved to ({}, {})", x, y)))
 }
 
 fn type_text(args: &str) -> Result<SkillOutput, SkillError> {
     let mut enigo = create_enigo()?;
-    enigo.text(args)
+    enigo
+        .text(args)
         .map_err(|e| SkillError::ExecutionFailed(e.to_string()))?;
     Ok(SkillOutput::Text(format!("Typed: {}", args)))
 }
@@ -249,9 +265,13 @@ fn scroll(args: &str) -> Result<SkillOutput, SkillError> {
         .map_err(|_| SkillError::InvalidArgs("Amount must be an integer".to_string()))?;
     let scroll_amount = if direction == "up" { -amount } else { amount };
     let mut enigo = create_enigo()?;
-    enigo.scroll(scroll_amount, Axis::Vertical)
+    enigo
+        .scroll(scroll_amount, Axis::Vertical)
         .map_err(|e| SkillError::ExecutionFailed(e.to_string()))?;
-    Ok(SkillOutput::Text(format!("Scrolled {} by {}", direction, amount)))
+    Ok(SkillOutput::Text(format!(
+        "Scrolled {} by {}",
+        direction, amount
+    )))
 }
 
 fn key_press(args: &str) -> Result<SkillOutput, SkillError> {
@@ -294,18 +314,22 @@ fn key_press(args: &str) -> Result<SkillOutput, SkillError> {
         }
     }
     for m in &modifiers {
-        enigo.key(*m, Press)
+        enigo
+            .key(*m, Press)
             .map_err(|e| SkillError::ExecutionFailed(e.to_string()))?;
     }
     if let Some(k) = main_key {
-        enigo.key(k, Click)
+        enigo
+            .key(k, Click)
             .map_err(|e| SkillError::ExecutionFailed(e.to_string()))?;
     } else if modifiers.is_empty() {
-        enigo.text(args)
+        enigo
+            .text(args)
             .map_err(|e| SkillError::ExecutionFailed(e.to_string()))?;
     }
     for m in modifiers.iter().rev() {
-        enigo.key(*m, Release)
+        enigo
+            .key(*m, Release)
             .map_err(|e| SkillError::ExecutionFailed(e.to_string()))?;
     }
     Ok(SkillOutput::Text(format!("Key pressed: {}", args)))
@@ -318,21 +342,27 @@ fn open_url(args: &str) -> Result<SkillOutput, SkillError> {
 
 #[cfg(target_os = "macos")]
 fn open_in_browser(url: &str) -> Result<(), SkillError> {
-    Command::new("open").arg(url).status()
+    Command::new("open")
+        .arg(url)
+        .status()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to open URL: {}", e)))
         .map(|_| ())
 }
 
 #[cfg(target_os = "windows")]
 fn open_in_browser(url: &str) -> Result<(), SkillError> {
-    Command::new("cmd").args(["/C", "start", "", url]).status()
+    Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .status()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to open URL: {}", e)))
         .map(|_| ())
 }
 
 #[cfg(target_os = "linux")]
 fn open_in_browser(url: &str) -> Result<(), SkillError> {
-    Command::new("xdg-open").arg(url).status()
+    Command::new("xdg-open")
+        .arg(url)
+        .status()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to open URL: {}", e)))
         .map(|_| ())
 }
@@ -349,9 +379,11 @@ fn parse_coordinates(args: &str) -> Result<(i32, i32), SkillError> {
             "Expected: x y coordinates. Example: 960 540".to_string(),
         ));
     }
-    let x: i32 = parts[0].parse()
+    let x: i32 = parts[0]
+        .parse()
         .map_err(|_| SkillError::InvalidArgs("X must be an integer".to_string()))?;
-    let y: i32 = parts[1].parse()
+    let y: i32 = parts[1]
+        .parse()
         .map_err(|_| SkillError::InvalidArgs("Y must be an integer".to_string()))?;
     Ok((x, y))
 }

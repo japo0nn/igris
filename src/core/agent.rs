@@ -29,7 +29,10 @@ pub async fn execute_agent_loop(
     let mut content = match ask_llm(&messages, &context.config, max_tokens).await {
         Ok(c) => c,
         Err(e @ IgrisError::LlmUnavailable(_)) | Err(e @ IgrisError::LlmTimeout(_)) => {
-            context.spinner.stop(format!("[IGRIS ERROR] LLM недоступен: {}", e)).await;
+            context
+                .spinner
+                .stop(format!("[IGRIS ERROR] LLM недоступен: {}", e))
+                .await;
             return Err(e);
         }
         Err(e) => {
@@ -61,7 +64,8 @@ pub async fn execute_agent_loop(
                                 constraints: None,
                             },
                             session,
-                        ).await?;
+                        )
+                        .await?;
                         return Err(IgrisError::MaxFixIterationsExceeded(
                             context.config.execution.fix_iteration_limit as usize,
                         ));
@@ -197,12 +201,8 @@ pub async fn execute_agent_loop(
                     } => {
                         context.spinner.stop(String::new()).await;
                         user_interaction_required = true;
-                        let user_choice = prompt_user_permission(
-                            action,
-                            description,
-                            risk_level,
-                            options,
-                        )?;
+                        let user_choice =
+                            prompt_user_permission(action, description, risk_level, options)?;
                         if !user_choice {
                             return Err(IgrisError::PermissionDenied(format!(
                                 "User denied action: {}",
@@ -211,20 +211,15 @@ pub async fn execute_agent_loop(
                         }
                         context.spinner.start("Thinking...".to_string()).await;
                     }
-                    Action::PromptUser {
-                        message,
-                        options,
-                    } => {
+                    Action::PromptUser { message, options } => {
                         context.spinner.stop(String::new()).await;
                         user_interaction_required = true;
                         let user_input = prompt_user_input(message, options)?;
                         if !combined_output.is_empty() {
                             combined_output.push_str("\n---\n");
                         }
-                        combined_output.push_str(&format!(
-                            "[User response to prompt]: {}",
-                            user_input
-                        ));
+                        combined_output
+                            .push_str(&format!("[User response to prompt]: {}", user_input));
                         context.spinner.start("Thinking...".to_string()).await;
                     }
                     Action::RequestData {
@@ -233,20 +228,14 @@ pub async fn execute_agent_loop(
                         limit,
                     } => {
                         if source == "memory" {
-                            let memory_results = request_memory_data(
-                                context,
-                                query,
-                                *limit,
-                            )?;
+                            let memory_results = request_memory_data(context, query, *limit)?;
                             if !combined_output.is_empty() {
                                 combined_output.push_str("\n---\n");
                             }
                             combined_output.push_str(&memory_results);
                         } else {
-                            let sys_info = format!(
-                                "[System Info Request] source={}, query={}",
-                                source, query
-                            );
+                            let sys_info =
+                                format!("[System Info Request] source={}, query={}", source, query);
                             if !combined_output.is_empty() {
                                 combined_output.push_str("\n---\n");
                             }
@@ -269,19 +258,18 @@ pub async fn execute_agent_loop(
                             code_chunk.len(),
                             dependencies
                         );
-                        context.spinner.add_log_line(format!(
-                            "\x1b[2m|   \x1b[33m{}\x1b[0m",
-                            chunk_info
-                        ));
+                        context
+                            .spinner
+                            .add_log_line(format!("\x1b[2m|   \x1b[33m{}\x1b[0m", chunk_info));
                         if !combined_output.is_empty() {
                             combined_output.push_str("\n---\n");
                         }
                         combined_output.push_str(&chunk_info);
                     }
                     Action::RespondToUser => {
-                        context.spinner.add_log_line(format!(
-                            "\x1b[2m|   \x1b[36mRespond to user...\x1b[0m"
-                        ));
+                        context
+                            .spinner
+                            .add_log_line(format!("\x1b[2m|   \x1b[36mRespond to user...\x1b[0m"));
                     }
                 }
 
@@ -316,7 +304,8 @@ pub async fn execute_agent_loop(
                             constraints: None,
                         },
                         session,
-                    ).await?;
+                    )
+                    .await?;
                     return Err(IgrisError::MaxFixIterationsExceeded(
                         context.config.execution.fix_iteration_limit as usize,
                     ));
@@ -351,7 +340,8 @@ pub async fn execute_agent_loop(
                             constraints: None,
                         },
                         session,
-                    ).await?;
+                    )
+                    .await?;
                     return Err(IgrisError::MaxIterationsExceeded(max_iter as usize));
                 }
 
@@ -432,7 +422,8 @@ pub async fn execute_agent_loop(
                                     constraints: None,
                                 },
                                 session,
-                            ).await?;
+                            )
+                            .await?;
                             return Err(IgrisError::MaxFixIterationsExceeded(
                                 context.config.execution.fix_iteration_limit as usize,
                             ));
@@ -462,12 +453,11 @@ fn prompt_user_permission(
     risk_level: &str,
     options: &[String],
 ) -> Result<bool, IgrisError> {
-    eprintln!(
-        "\n\x1b[1;33m[PERMISSION REQUEST]\x1b[0m"
-    );
+    eprintln!("\n\x1b[1;33m[PERMISSION REQUEST]\x1b[0m");
     eprintln!("  Action: \x1b[36m{}\x1b[0m", action);
     eprintln!("  Description: \x1b[37m{}\x1b[0m", description);
-    eprintln!("  Risk level: \x1b[{}m{}\x1b[0m",
+    eprintln!(
+        "  Risk level: \x1b[{}m{}\x1b[0m",
         match risk_level {
             "low" => "32",
             "medium" => "33",
@@ -481,7 +471,9 @@ fn prompt_user_permission(
         eprintln!("  \x1b[34m[{}]\x1b[0m {}", i + 1, opt);
     }
     eprint!("\x1b[1;34m?\x1b[0m Your choice (1-{}): ", options.len());
-    io::stderr().flush().map_err(|e| IgrisError::IoError(e.to_string()))?;
+    io::stderr()
+        .flush()
+        .map_err(|e| IgrisError::IoError(e.to_string()))?;
 
     let mut input = String::new();
     io::stdin()
@@ -499,9 +491,7 @@ fn prompt_user_permission(
 }
 
 fn prompt_user_input(message: &str, options: &[String]) -> Result<String, IgrisError> {
-    eprintln!(
-        "\n\x1b[1;36m[PROMPT USER]\x1b[0m"
-    );
+    eprintln!("\n\x1b[1;36m[PROMPT USER]\x1b[0m");
     eprintln!("  \x1b[37m{}\x1b[0m", message);
 
     if !options.is_empty() {
@@ -512,7 +502,9 @@ fn prompt_user_input(message: &str, options: &[String]) -> Result<String, IgrisE
     } else {
         eprint!("\x1b[1;34m?\x1b[0m Your response: ");
     }
-    io::stderr().flush().map_err(|e| IgrisError::IoError(e.to_string()))?;
+    io::stderr()
+        .flush()
+        .map_err(|e| IgrisError::IoError(e.to_string()))?;
 
     let mut input = String::new();
     io::stdin()
@@ -537,7 +529,7 @@ fn request_memory_data(
     query: &str,
     limit: u32,
 ) -> Result<String, IgrisError> {
-    use crate::db::{search_messages, get_topics};
+    use crate::db::{get_topics, search_messages};
 
     let connection = context.connection.lock().unwrap();
     let mut results = String::new();
@@ -584,7 +576,10 @@ async fn handle_error(
 ) -> Result<String, IgrisError> {
     // Non-recoverable errors: immediately return to user
     if should_abort_on_error(&error) {
-        let error_msg = format!("[IGRIS ERROR] Non-recoverable error: {}\nTask has been stopped.", error);
+        let error_msg = format!(
+            "[IGRIS ERROR] Non-recoverable error: {}\nTask has been stopped.",
+            error
+        );
         eprintln!("\x1b[31m{}\x1b[0m", error_msg);
         spawn_save_message(
             context,
@@ -598,7 +593,8 @@ async fn handle_error(
                 constraints: None,
             },
             session,
-        ).await?;
+        )
+        .await?;
         return Err(error);
     }
     if save_raw_content {

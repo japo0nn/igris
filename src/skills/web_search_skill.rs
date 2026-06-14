@@ -17,7 +17,9 @@ impl WebSearchSkill {
                 name: "WebSearchSkill".to_string(),
                 version: "0.1.0".to_string(),
                 _type: crate::models::metadata::ModuleType::Persistent,
-                description: "Search the web and read webpage content using DuckDuckGo and HTML parsing.".to_string(),
+                description:
+                    "Search the web and read webpage content using DuckDuckGo and HTML parsing."
+                        .to_string(),
                 author: Some("IGRIS".to_string()),
             },
         }
@@ -40,18 +42,22 @@ impl WebSearchSkill {
             .map_err(|e| SkillError::ExecutionFailed(format!("Read body failed: {}", e)))?;
 
         let document = Html::parse_document(&resp);
-        let result_selector =
-            Selector::parse(".result__title a, .result__snippet").map_err(|e| {
-                SkillError::ExecutionFailed(format!("Selector error: {}", e))
-            })?;
+        let result_selector = Selector::parse(".result__title a, .result__snippet")
+            .map_err(|e| SkillError::ExecutionFailed(format!("Selector error: {}", e)))?;
 
         let mut results = Vec::new();
         let mut current_title = String::new();
 
         for element in document.select(&result_selector) {
             let text = element.text().collect::<String>().trim().to_string();
-            if element.value().has_class("result__title", scraper::CaseSensitivity::CaseSensitive) ||
-               element.value().has_class("result__title", scraper::CaseSensitivity::AsciiCaseInsensitive) {
+            if element
+                .value()
+                .has_class("result__title", scraper::CaseSensitivity::CaseSensitive)
+                || element.value().has_class(
+                    "result__title",
+                    scraper::CaseSensitivity::AsciiCaseInsensitive,
+                )
+            {
                 if let Some(href) = element.value().attr("href") {
                     current_title = format!("[{}]({})", text, href);
                 } else {
@@ -88,7 +94,8 @@ impl WebSearchSkill {
 
         let document = Html::parse_document(&resp);
         let body_selector = Selector::parse("body").unwrap();
-        let text_selector = Selector::parse("p, h1, h2, h3, h4, h5, h6, li, pre, code, blockquote").unwrap();
+        let text_selector =
+            Selector::parse("p, h1, h2, h3, h4, h5, h6, li, pre, code, blockquote").unwrap();
 
         let mut content = Vec::new();
 
@@ -108,7 +115,11 @@ impl WebSearchSkill {
                         "li" => "- ",
                         _ => "",
                     };
-                    let suffix = if tag_name == "pre" || tag_name == "code" { "`" } else { "" };
+                    let suffix = if tag_name == "pre" || tag_name == "code" {
+                        "`"
+                    } else {
+                        ""
+                    };
                     content.push(format!("{}{}{}", prefix, text, suffix));
                 }
             }
@@ -116,7 +127,10 @@ impl WebSearchSkill {
 
         let output = content.join("\n");
         if output.len() > 5000 {
-            Ok(format!("{}...\n[Truncated to 5000 chars]", &output[..output.floor_char_boundary(5000)]))
+            Ok(format!(
+                "{}...\n[Truncated to 5000 chars]",
+                &output[..output.floor_char_boundary(5000)]
+            ))
         } else if output.is_empty() {
             Ok("Page appears to be empty or unreadable.".to_string())
         } else {
@@ -150,7 +164,10 @@ impl SkillModule for WebSearchSkill {
                 let result = self.read_webpage(args.trim())?;
                 Ok(SkillOutput::Text(result))
             }
-            _ => Err(SkillError::NotFound(format!("Method '{}' not found", method))),
+            _ => Err(SkillError::NotFound(format!(
+                "Method '{}' not found",
+                method
+            ))),
         }
     }
 
@@ -175,10 +192,7 @@ fn urlencoding(s: &str) -> String {
         .map(|c| match c {
             'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
             ' ' => '+'.to_string(),
-            other => format!(
-                "%{:02X}",
-                other as u8
-            ),
+            other => format!("%{:02X}", other as u8),
         })
         .collect()
 }

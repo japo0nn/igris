@@ -1,10 +1,10 @@
+use nnnoiseless::DenoiseState;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::sync::mpsc;
 use std::thread;
-use nnnoiseless::DenoiseState;
+use std::time::Instant;
 
 static COOLDOWN_ACTIVE: AtomicBool = AtomicBool::new(false);
 static COOLDOWN_START: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
@@ -17,7 +17,12 @@ pub fn trigger_cooldown() {
 }
 
 pub fn start_listener(api_key: &str) -> Result<mpsc::Receiver<String>, String> {
-    if Command::new("which").arg("ffmpeg").output().map(|o| !o.status.success()).unwrap_or(true) {
+    if Command::new("which")
+        .arg("ffmpeg")
+        .output()
+        .map(|o| !o.status.success())
+        .unwrap_or(true)
+    {
         return Err("ffmpeg not found. Install with: brew install ffmpeg".to_string());
     }
 
@@ -48,12 +53,18 @@ fn run_listener(api_key: String, tx: mpsc::Sender<String>) {
 
     let mut child = match Command::new("ffmpeg")
         .args(&[
-            "-f", "avfoundation",
-            "-i", ":default",
-            "-ac", "1",
-            "-ar", &sample_rate.to_string(),
-            "-f", "s16le",
-            "-loglevel", "quiet",
+            "-f",
+            "avfoundation",
+            "-i",
+            ":default",
+            "-ac",
+            "1",
+            "-ar",
+            &sample_rate.to_string(),
+            "-f",
+            "s16le",
+            "-loglevel",
+            "quiet",
             "pipe:1",
         ])
         .stdout(Stdio::piped())
@@ -112,32 +123,47 @@ fn run_listener(api_key: String, tx: mpsc::Sender<String>) {
                 current_frame.push(sample);
 
                 if current_frame.len() == frame_size {
-                    let mut frame = std::mem::replace(&mut current_frame, Vec::with_capacity(frame_size));
+                    let mut frame =
+                        std::mem::replace(&mut current_frame, Vec::with_capacity(frame_size));
 
                     hpf.process(&mut frame);
                     denoise_frame(&mut denoise, &mut frame);
 
                     frame_count += 1;
 
-                    let frame_rms = (frame.iter().map(|&s| (s as f64).powi(2)).sum::<f64>() / frame.len() as f64).sqrt();
+                    let frame_rms = (frame.iter().map(|&s| (s as f64).powi(2)).sum::<f64>()
+                        / frame.len() as f64)
+                        .sqrt();
 
                     let threshold = if is_speaking { 1.3 } else { 2.5 };
                     let is_voice = frame_rms > noise_floor * threshold && frame_rms > 20.0;
 
                     if !is_voice {
                         noise_floor = noise_floor * 0.98 + frame_rms * 0.02;
-                        if noise_floor < 10.0 { noise_floor = 10.0; }
+                        if noise_floor < 10.0 {
+                            noise_floor = 10.0;
+                        }
                     }
 
                     if frame_count % 30 == 0 {
-                        eprintln!("[Voice] Frame {}: RMS={:.1}, voice={}, speaking={}, noise={:.1}, thr={:.1}",
-                            frame_count, frame_rms, is_voice, is_speaking, noise_floor, noise_floor * threshold);
+                        eprintln!(
+                            "[Voice] Frame {}: RMS={:.1}, voice={}, speaking={}, noise={:.1}, thr={:.1}",
+                            frame_count,
+                            frame_rms,
+                            is_voice,
+                            is_speaking,
+                            noise_floor,
+                            noise_floor * threshold
+                        );
                     }
 
                     if is_voice {
                         if !is_speaking {
                             is_speaking = true;
-                            eprintln!("[Voice] Speech STARTED (RMS: {:.1}, NF: {:.1})", frame_rms, noise_floor);
+                            eprintln!(
+                                "[Voice] Speech STARTED (RMS: {:.1}, NF: {:.1})",
+                                frame_rms, noise_floor
+                            );
                             speech_buffer.clear();
                         }
                         speech_buffer.extend_from_slice(&frame);
@@ -146,17 +172,25 @@ fn run_listener(api_key: String, tx: mpsc::Sender<String>) {
                         speech_buffer.extend_from_slice(&frame);
                         if silence_start.is_none() {
                             silence_start = Some(std::time::Instant::now());
-                        } else if silence_start.unwrap().elapsed().as_millis() as u64 > silence_timeout_ms {
+                        } else if silence_start.unwrap().elapsed().as_millis() as u64
+                            > silence_timeout_ms
+                        {
                             is_speaking = false;
 
                             if speech_buffer.len() < min_speech_samples {
-                                eprintln!("[Voice] Speech too short ({} samples), ignoring.", speech_buffer.len());
+                                eprintln!(
+                                    "[Voice] Speech too short ({} samples), ignoring.",
+                                    speech_buffer.len()
+                                );
                                 speech_buffer.clear();
                                 silence_start = None;
                                 continue;
                             }
 
-                            eprintln!("[Voice] Speech ended, transcribing {} samples", speech_buffer.len());
+                            eprintln!(
+                                "[Voice] Speech ended, transcribing {} samples",
+                                speech_buffer.len()
+                            );
                             if !speech_buffer.is_empty() {
                                 normalize_audio(&mut speech_buffer);
                                 let wav_data = pcm_to_wav(&speech_buffer, sample_rate);
@@ -193,7 +227,10 @@ struct HighPassFilter {
 
 impl HighPassFilter {
     fn new() -> Self {
-        Self { prev_x: 0.0, prev_y: 0.0 }
+        Self {
+            prev_x: 0.0,
+            prev_y: 0.0,
+        }
     }
 
     fn process(&mut self, frame: &mut [i16]) {
@@ -208,9 +245,13 @@ impl HighPassFilter {
 }
 
 fn normalize_audio(samples: &mut [i16]) {
-    if samples.is_empty() { return; }
+    if samples.is_empty() {
+        return;
+    }
     let max_val = samples.iter().map(|&s| s.abs()).max().unwrap_or(1);
-    if max_val == 0 { return; }
+    if max_val == 0 {
+        return;
+    }
     let target_peak: f64 = 0.95 * 32768.0;
     let gain = (target_peak / max_val as f64).min(10.0);
     for sample in samples.iter_mut() {
@@ -260,7 +301,9 @@ fn transcribe_groq(wav_data: &[u8], api_key: &str) -> Result<String, String> {
     let mut body = Vec::new();
 
     body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\n");
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\n",
+    );
     body.extend_from_slice(b"Content-Type: audio/wav\r\n\r\n");
     body.extend_from_slice(wav_data);
     body.extend_from_slice(b"\r\n");
@@ -279,14 +322,20 @@ fn transcribe_groq(wav_data: &[u8], api_key: &str) -> Result<String, String> {
     let response = client
         .post("https://api.groq.com/openai/v1/audio/transcriptions")
         .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", format!("multipart/form-data; boundary={}", boundary))
+        .header(
+            "Content-Type",
+            format!("multipart/form-data; boundary={}", boundary),
+        )
         .body(body)
         .send()
         .map_err(|e| format!("Groq request failed: {}", e))?;
 
-    let text = response.text().map_err(|e| format!("Failed to read response: {}", e))?;
+    let text = response
+        .text()
+        .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {} -> {}", e, text))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {} -> {}", e, text))?;
 
     if let Some(transcript) = json["text"].as_str() {
         Ok(transcript.to_string())

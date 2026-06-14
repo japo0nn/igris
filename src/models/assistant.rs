@@ -22,9 +22,15 @@ pub struct Constraints {
     pub max_tokens: u32,
 }
 
-fn default_max_iterations() -> u32 { 10 }
-fn default_max_fix_iterations() -> u32 { 5 }
-fn default_max_tokens() -> u32 { 16000 }
+fn default_max_iterations() -> u32 {
+    10
+}
+fn default_max_fix_iterations() -> u32 {
+    5
+}
+fn default_max_tokens() -> u32 {
+    16000
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TaskObject {

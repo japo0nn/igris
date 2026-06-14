@@ -37,8 +37,12 @@ pub struct ExecutionConfig {
     pub fix_iteration_limit: u32,
 }
 
-fn default_iteration_limit() -> u32 { 10 }
-fn default_fix_iteration_limit() -> u32 { 5 }
+fn default_iteration_limit() -> u32 {
+    10
+}
+fn default_fix_iteration_limit() -> u32 {
+    5
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct LlmConfig {
@@ -95,4 +99,6 @@ pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::E
     Ok((config, secrets))
 }
 
-fn default_vision_model() -> String { String::from("cc/claude-sonnet-4-6") }
+fn default_vision_model() -> String {
+    String::from("cc/claude-sonnet-4-6")
+}

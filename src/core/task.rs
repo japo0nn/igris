@@ -4,8 +4,8 @@ use crate::{
     error::IgrisError,
     memory::Session,
     models::assistant::{
-        ActionResponse, Constraints, SystemInfo, TaskObject, TaskObjectSkill, TaskObjectSkillMethod,
-        TopicRequest,
+        ActionResponse, Constraints, SystemInfo, TaskObject, TaskObjectSkill,
+        TaskObjectSkillMethod, TopicRequest,
     },
     skills::SkillModule,
 };

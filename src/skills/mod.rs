@@ -2,12 +2,12 @@ use serde_json::Value;
 
 use crate::{error::IgrisError, models::metadata::ModuleMetadata};
 
-pub mod memory_skill;
 pub mod gui_skill;
+pub mod memory_skill;
 pub mod shell_executor;
 pub mod user_profile_skill;
-pub mod web_search_skill;
 pub mod voice_skill;
+pub mod web_search_skill;
 
 pub trait SkillModule {
     fn get_metadata(&self) -> &ModuleMetadata;

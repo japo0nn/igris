@@ -58,7 +58,7 @@ impl UserProfileSkill {
         let profile_path = dirs::home_dir()
             .map(|p| p.join(".igris").join("user_profile.json"))
             .unwrap_or_else(|| PathBuf::from("/tmp/igris_user_profile.json"));
-        
+
         let profile = if profile_path.exists() {
             fs::read_to_string(&profile_path)
                 .ok()
@@ -71,7 +71,8 @@ impl UserProfileSkill {
         Self {
             metadata: ModuleMetadata {
                 name: "UserProfileSkill".to_string(),
-                description: "Manages persistent user profile with preferences and habits".to_string(),
+                description: "Manages persistent user profile with preferences and habits"
+                    .to_string(),
                 version: "0.1.0".to_string(),
                 _type: ModuleType::Persistent,
                 author: None,
@@ -83,8 +84,9 @@ impl UserProfileSkill {
 
     pub fn save(&self) -> Result<(), SkillError> {
         if let Some(parent) = self.profile_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| SkillError::ExecutionFailed(format!("Failed to create profile dir: {}", e)))?;
+            fs::create_dir_all(parent).map_err(|e| {
+                SkillError::ExecutionFailed(format!("Failed to create profile dir: {}", e))
+            })?;
         }
         let json = serde_json::to_string_pretty(&self.profile)
             .map_err(|e| SkillError::ExecutionFailed(format!("Serialization error: {}", e)))?;
@@ -94,7 +96,9 @@ impl UserProfileSkill {
     }
 
     pub fn update_preference(&mut self, key: &str, value: &str) -> Result<(), SkillError> {
-        self.profile.preferences.insert(key.to_string(), value.to_string());
+        self.profile
+            .preferences
+            .insert(key.to_string(), value.to_string());
         self.profile.last_updated = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs().to_string())
@@ -122,7 +126,8 @@ impl SkillModule for UserProfileSkill {
             MethodInfo {
                 method: "update-preference".to_string(),
                 description: "Update a single user preference by key-value pair".to_string(),
-                args_description: "Key and value separated by a pipe '|'. Example: music_genre|jazz".to_string(),
+                args_description:
+                    "Key and value separated by a pipe '|'. Example: music_genre|jazz".to_string(),
             },
             MethodInfo {
                 method: "add-topic".to_string(),
@@ -135,16 +140,16 @@ impl SkillModule for UserProfileSkill {
     fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         match method {
             "get-profile" => {
-                let json = serde_json::to_value(&self.profile)
-                    .map_err(|e| SkillError::ExecutionFailed(format!("Serialization error: {}", e)))?;
+                let json = serde_json::to_value(&self.profile).map_err(|e| {
+                    SkillError::ExecutionFailed(format!("Serialization error: {}", e))
+                })?;
                 Ok(SkillOutput::Json(json))
             }
-            "update-preference" => {
-                Ok(SkillOutput::Text(format!("Preference update requested: {}", args)))
-            }
-            "add-topic" => {
-                Ok(SkillOutput::Text(format!("Topic add requested: {}", args)))
-            }
+            "update-preference" => Ok(SkillOutput::Text(format!(
+                "Preference update requested: {}",
+                args
+            ))),
+            "add-topic" => Ok(SkillOutput::Text(format!("Topic add requested: {}", args))),
             _ => Err(SkillError::NotFound(method.to_string())),
         }
     }

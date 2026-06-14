@@ -1,9 +1,9 @@
+use chrono::Local;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use chrono::Local;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct Supervisor {
     pub version: String,
@@ -26,10 +26,19 @@ pub enum SupervisorState {
 pub enum SupervisorEvent {
     Startup,
     Shutdown,
-    Restart { reason: String },
-    Error { message: String },
-    BackupCreated { path: String },
-    Rollback { from_version: String, to_version: String },
+    Restart {
+        reason: String,
+    },
+    Error {
+        message: String,
+    },
+    BackupCreated {
+        path: String,
+    },
+    Rollback {
+        from_version: String,
+        to_version: String,
+    },
 }
 
 impl Supervisor {
@@ -59,13 +68,24 @@ impl Supervisor {
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let entry = match &event {
             SupervisorEvent::Startup => {
-                format!("[{}] [STARTUP] IGRIS v{} started from {}\n", timestamp, self.version, self.binary_path.display())
+                format!(
+                    "[{}] [STARTUP] IGRIS v{} started from {}\n",
+                    timestamp,
+                    self.version,
+                    self.binary_path.display()
+                )
             }
             SupervisorEvent::Shutdown => {
-                format!("[{}] [SHUTDOWN] IGRIS v{} stopped\n", timestamp, self.version)
+                format!(
+                    "[{}] [SHUTDOWN] IGRIS v{} stopped\n",
+                    timestamp, self.version
+                )
             }
             SupervisorEvent::Restart { reason } => {
-                format!("[{}] [RESTART] IGRIS v{} restarting: {}\n", timestamp, self.version, reason)
+                format!(
+                    "[{}] [RESTART] IGRIS v{} restarting: {}\n",
+                    timestamp, self.version, reason
+                )
             }
             SupervisorEvent::Error { message } => {
                 format!("[{}] [ERROR] v{}: {}\n", timestamp, self.version, message)
@@ -73,8 +93,14 @@ impl Supervisor {
             SupervisorEvent::BackupCreated { path } => {
                 format!("[{}] [BACKUP] Created backup at {}\n", timestamp, path)
             }
-            SupervisorEvent::Rollback { from_version, to_version } => {
-                format!("[{}] [ROLLBACK] From v{} to v{}\n", timestamp, from_version, to_version)
+            SupervisorEvent::Rollback {
+                from_version,
+                to_version,
+            } => {
+                format!(
+                    "[{}] [ROLLBACK] From v{} to v{}\n",
+                    timestamp, from_version, to_version
+                )
             }
         };
 
@@ -111,8 +137,7 @@ impl Supervisor {
             return Err(format!("Backup not found: {}", backup_path.display()));
         }
 
-        fs::copy(&backup_path, &self.binary_path)
-            .map_err(|e| format!("Rollback failed: {}", e))?;
+        fs::copy(&backup_path, &self.binary_path).map_err(|e| format!("Rollback failed: {}", e))?;
 
         self.log_event(SupervisorEvent::Rollback {
             from_version: self.version.clone(),
@@ -138,9 +163,7 @@ impl Supervisor {
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
-            let err = Command::new(binary)
-                .args(&args[1..])
-                .exec();
+            let err = Command::new(binary).args(&args[1..]).exec();
             return Err(format!("Restart failed (exec error): {}", err));
         }
 
@@ -168,7 +191,11 @@ impl Supervisor {
         let mut entries: Vec<_> = fs::read_dir(&self.backups_dir)
             .unwrap_or_else(|_| panic!("Cannot read backups dir {}", self.backups_dir.display()))
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().file_name().map_or(false, |n| n.to_string_lossy().starts_with("igris_v")))
+            .filter(|e| {
+                e.path()
+                    .file_name()
+                    .map_or(false, |n| n.to_string_lossy().starts_with("igris_v"))
+            })
             .collect();
 
         entries.sort_by_key(|e| e.path().metadata().ok().map(|m| m.modified().ok()));
@@ -185,7 +212,11 @@ impl Supervisor {
         let mut backups: Vec<String> = fs::read_dir(&self.backups_dir)
             .unwrap_or_else(|_| panic!("Cannot read backups dir {}", self.backups_dir.display()))
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().file_name().map_or(false, |n| n.to_string_lossy().starts_with("igris_v")))
+            .filter(|e| {
+                e.path()
+                    .file_name()
+                    .map_or(false, |n| n.to_string_lossy().starts_with("igris_v"))
+            })
             .map(|e| e.file_name().to_string_lossy().to_string())
             .collect();
         backups.sort();
