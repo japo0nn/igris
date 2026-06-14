@@ -32,7 +32,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let status = "Active";
 
     println!("{name} {version}\nStatus: {status}");
-    supervisor::log_event(supervisor::SupervisorEvent::Startup);
+
+    let sv = supervisor::Supervisor::new(version);
+    sv.log_event(supervisor::SupervisorEvent::Startup);
 
     let (config, secrets) = configs::llm::load_config()?;
 
@@ -112,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         chat_loopback(&context, &session, &skills, initial_history).await?;
     }
 
-    supervisor::log_event(supervisor::SupervisorEvent::Shutdown);
+    sv.log_event(supervisor::SupervisorEvent::Shutdown);
     Ok(())
 }
 
