@@ -1,6 +1,112 @@
 import { useState, useEffect, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 const API_URL = 'http://localhost:3001'
+
+function MarkdownMessage({ content }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        code({ node, inline, className, children, ...props }) {
+          const match = /language-(\w+)/.exec(className || '')
+          return !inline && match ? (
+            <SyntaxHighlighter
+              style={oneDark}
+              language={match[1]}
+              PreTag="div"
+              customStyle={{
+                borderRadius: 8,
+                fontSize: 13,
+                margin: '8px 0',
+                border: '1px solid #2a2a2a',
+              }}
+              {...props}
+            >
+              {String(children).replace(/\n$/, '')}
+            </SyntaxHighlighter>
+          ) : (
+            <code
+              style={{
+                background: '#1e1e1e',
+                border: '1px solid #2a2a2a',
+                borderRadius: 4,
+                padding: '2px 6px',
+                fontSize: 13,
+                color: '#00d4ff',
+                fontFamily: 'monospace',
+              }}
+              {...props}
+            >
+              {children}
+            </code>
+          )
+        },
+        p({ children }) {
+          return <p style={{ margin: '6px 0', lineHeight: 1.6 }}>{children}</p>
+        },
+        ul({ children }) {
+          return <ul style={{ paddingLeft: 20, margin: '6px 0' }}>{children}</ul>
+        },
+        ol({ children }) {
+          return <ol style={{ paddingLeft: 20, margin: '6px 0' }}>{children}</ol>
+        },
+        li({ children }) {
+          return <li style={{ margin: '3px 0', lineHeight: 1.5 }}>{children}</li>
+        },
+        h1({ children }) {
+          return <h1 style={{ fontSize: 20, fontWeight: 700, margin: '12px 0 6px', color: '#fff', borderBottom: '1px solid #222', paddingBottom: 4 }}>{children}</h1>
+        },
+        h2({ children }) {
+          return <h2 style={{ fontSize: 17, fontWeight: 700, margin: '10px 0 5px', color: '#eee' }}>{children}</h2>
+        },
+        h3({ children }) {
+          return <h3 style={{ fontSize: 15, fontWeight: 600, margin: '8px 0 4px', color: '#ddd' }}>{children}</h3>
+        },
+        blockquote({ children }) {
+          return (
+            <blockquote style={{
+              borderLeft: '3px solid #00d4ff44',
+              paddingLeft: 12,
+              margin: '8px 0',
+              color: '#888',
+              fontStyle: 'italic',
+            }}>
+              {children}
+            </blockquote>
+          )
+        },
+        table({ children }) {
+          return (
+            <div style={{ overflowX: 'auto', margin: '8px 0' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>{children}</table>
+            </div>
+          )
+        },
+        th({ children }) {
+          return <th style={{ border: '1px solid #2a2a2a', padding: '6px 10px', background: '#1a1a1a', color: '#00d4ff', textAlign: 'left' }}>{children}</th>
+        },
+        td({ children }) {
+          return <td style={{ border: '1px solid #1e1e1e', padding: '6px 10px', color: '#ccc' }}>{children}</td>
+        },
+        a({ href, children }) {
+          return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: '#00d4ff', textDecoration: 'underline' }}>{children}</a>
+        },
+        strong({ children }) {
+          return <strong style={{ color: '#fff', fontWeight: 600 }}>{children}</strong>
+        },
+        hr() {
+          return <hr style={{ border: 'none', borderTop: '1px solid #222', margin: '12px 0' }} />
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  )
+}
 
 function App() {
   const [messages, setMessages] = useState([])
@@ -31,7 +137,6 @@ function App() {
     const userText = input
     setInput('')
     setLoading(true)
-    // Optimistically show user message
     setMessages(prev => [...prev, { role: 'user', content: userText }])
     try {
       await fetch(`${API_URL}/api/chat`, {
@@ -39,7 +144,6 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userText })
       })
-      // Replace all messages with clean data from DB
       await fetchHistory()
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Error: could not reach IGRIS backend.' }])
@@ -86,7 +190,13 @@ function App() {
             <div key={i} style={msg.role === 'user' ? styles.userBubbleWrap : styles.aiBubbleWrap}>
               {msg.role === 'assistant' && <div style={styles.aiAvatar}>⚡</div>}
               <div style={msg.role === 'user' ? styles.userBubble : styles.aiBubble}>
-                <pre style={styles.msgText}>{msg.content}</pre>
+                {msg.role === 'user' ? (
+                  <pre style={styles.msgText}>{msg.content}</pre>
+                ) : (
+                  <div style={styles.markdownBody}>
+                    <MarkdownMessage content={msg.content} />
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -125,7 +235,7 @@ const styles = {
   logoIcon: { fontSize: 24, color: '#00d4ff' },
   logoText: { fontSize: 20, fontWeight: 700, color: '#fff', letterSpacing: 2 },
   sidebarSection: { fontSize: 11, color: '#555', padding: '16px 20px 8px', letterSpacing: 1, textTransform: 'uppercase' },
-  sidebarItem: { padding: '10px 20px', cursor: 'pointer', color: '#aaa', fontSize: 14, borderRadius: 6, margin: '2px 8px', transition: 'all 0.2s', ':hover': { background: '#1a1a1a', color: '#fff' } },
+  sidebarItem: { padding: '10px 20px', cursor: 'pointer', color: '#aaa', fontSize: 14, borderRadius: 6, margin: '2px 8px', transition: 'all 0.2s' },
   sidebarFooter: { marginTop: 'auto', padding: '16px 20px', borderTop: '1px solid #222' },
   sidebarFooterText: { fontSize: 12, color: '#444' },
   main: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
@@ -143,8 +253,9 @@ const styles = {
   aiAvatar: { width: 32, height: 32, borderRadius: '50%', background: '#001a22', border: '1px solid #00d4ff44', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#00d4ff', flexShrink: 0 },
   userBubble: { maxWidth: '70%', background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: '18px 18px 4px 18px', padding: '12px 16px' },
   aiBubble: { maxWidth: '80%', background: '#141414', border: '1px solid #1e1e1e', borderRadius: '4px 18px 18px 18px', padding: '12px 16px' },
+  markdownBody: { fontSize: 14, lineHeight: 1.6, color: '#e0e0e0', fontFamily: 'inherit' },
   msgText: { margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 14, lineHeight: 1.6, color: '#e0e0e0', fontFamily: 'inherit' },
-  typing: { color: '#00d4ff', fontSize: 14, animation: 'pulse 1s infinite' },
+  typing: { color: '#00d4ff', fontSize: 14 },
   inputArea: { padding: '16px 24px', borderTop: '1px solid #1e1e1e', background: '#111', display: 'flex', gap: 12, alignItems: 'flex-end' },
   input: { flex: 1, background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 12, padding: '14px 16px', color: '#e0e0e0', fontSize: 14, resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5, maxHeight: 200, overflowY: 'auto' },
   sendBtn: { width: 44, height: 44, borderRadius: 10, background: '#00d4ff', border: 'none', color: '#000', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 },
