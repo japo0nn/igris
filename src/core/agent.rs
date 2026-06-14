@@ -140,7 +140,7 @@ pub async fn execute_agent_loop(
                                                     Err(error) => {
                                                         eprintln!("System parse error: {}", error);
                                                         content = handle_error(
-                                                            IgrisError::SkillError(
+                                                            IgrisError::ParseError(
                                                                 error.to_string(),
                                                             ),
                                                             content,
@@ -195,7 +195,7 @@ pub async fn execute_agent_loop(
                                                 Err(error) => {
                                                     eprintln!("System parse error: {}", error);
                                                     content = handle_error(
-                                                        IgrisError::SkillError(error.to_string()),
+                                                        IgrisError::ParseError(error.to_string()),
                                                         content,
                                                         skills,
                                                         &context,
@@ -300,12 +300,7 @@ async fn handle_error(
     .await?;
 
     // Build task object and push error to messages so LLM is aware
-    let task_object = build_task_object(
-        &error_str,
-        skills,
-        context,
-        Some(error_str.clone()),
-    )?;
+    let task_object = build_task_object(&error_str, skills, context, Some(error_str.clone()))?;
 
     messages.push(AssistantMessage {
         role: String::from("user"),
