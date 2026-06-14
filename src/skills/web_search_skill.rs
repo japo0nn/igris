@@ -11,6 +11,20 @@ pub struct WebSearchSkill {
 }
 
 impl WebSearchSkill {
+    pub fn new() -> Self {
+        WebSearchSkill {
+            metadata: ModuleMetadata {
+                name: "WebSearchSkill".to_string(),
+                version: "0.1.0".to_string(),
+                _type: crate::models::metadata::ModuleType::Persistent,
+                description: "Search the web and read webpage content using DuckDuckGo and HTML parsing.".to_string(),
+                author: Some("IGRIS".to_string()),
+            },
+        }
+    }
+}
+
+impl WebSearchSkill {
     fn search_duckduckgo(&self, query: &str) -> Result<String, SkillError> {
         let client = Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Igris/0.1")

@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{name} {version}\nStatus: {status}");
     supervisor::log_event(supervisor::SupervisorEvent::Startup);
 
-    let (config, _secrets) = configs::llm::load_config()?;
+    let (config, secrets) = configs::llm::load_config()?;
 
     let connection = init_database(&config)?;
 
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         spinner,
     };
 
-    let skills = init_modules_metadata(&context)?;
+    let skills = init_modules_metadata(&context, &secrets)?;
     let session = create_session(&context.connection.lock().unwrap())?;
 
     let initial_history = load_previous_session_history(&context);

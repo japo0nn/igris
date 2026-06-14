@@ -15,6 +15,21 @@ pub struct MemorySkill {
     pub context: CoreContext,
 }
 
+impl MemorySkill {
+    pub fn new(context: CoreContext) -> Self {
+        MemorySkill {
+            metadata: ModuleMetadata {
+                name: "Memory".to_string(),
+                version: "0.1.0".to_string(),
+                _type: crate::models::metadata::ModuleType::Persistent,
+                description: "Memory Skill is connected to IGRIS database where stored user\'s and assistant all messages".to_string(),
+                author: Some("IGRIS".to_string()),
+            },
+            context,
+        }
+    }
+}
+
 impl SkillModule for MemorySkill {
     fn get_metadata(&self) -> &ModuleMetadata {
         &self.metadata

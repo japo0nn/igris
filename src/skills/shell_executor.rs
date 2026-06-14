@@ -10,6 +10,20 @@ pub struct ShellExecutor {
     pub metadata: ModuleMetadata,
 }
 
+impl ShellExecutor {
+    pub fn new() -> Self {
+        ShellExecutor {
+            metadata: ModuleMetadata {
+                name: "ShellExecutor".to_string(),
+                version: "0.1.0".to_string(),
+                _type: crate::models::metadata::ModuleType::Persistent,
+                description: "Execute shell commands and run programs".to_string(),
+                author: Some("IGRIS".to_string()),
+            },
+        }
+    }
+}
+
 impl SkillModule for ShellExecutor {
     fn get_metadata(&self) -> &ModuleMetadata {
         &self.metadata

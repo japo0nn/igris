@@ -9,7 +9,7 @@ use crate::{
     db,
     error::IgrisError,
     memory::Session,
-    models::assistant::{Action, ActionResponse, AssistantMessage, Constraints},
+    models::assistant::{Action, ActionResponse, AssistantMessage},
     skills::{SkillModule, SkillOutput, find_skill},
 };
 

@@ -11,6 +11,12 @@ pub struct AppConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct SecretsConfig {
     pub llm: LlmSecrets,
+    pub voice: Option<VoiceSecrets>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct VoiceSecrets {
+    pub groq_api_key: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]

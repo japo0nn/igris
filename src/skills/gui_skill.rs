@@ -23,6 +23,21 @@ pub struct GuiSkill {
     pub llm_config: LlmConfig,
 }
 
+impl GuiSkill {
+    pub fn new(llm_config: LlmConfig) -> Self {
+        GuiSkill {
+            metadata: ModuleMetadata {
+                name: "GuiSkill".to_string(),
+                version: "0.1.0".to_string(),
+                _type: crate::models::metadata::ModuleType::Persistent,
+                description: "GUI automation: control mouse, keyboard, take screenshots and open URLs.".to_string(),
+                author: Some("IGRIS".to_string()),
+            },
+            llm_config,
+        }
+    }
+}
+
 impl SkillModule for GuiSkill {
     fn get_metadata(&self) -> &ModuleMetadata {
         &self.metadata
