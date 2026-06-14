@@ -2,7 +2,11 @@ use crate::{
     core::CoreContext,
     error::IgrisError,
     models::metadata::{ModuleMetadata, ModuleType},
-    skills::{SkillModule, gui_skill::GuiSkill, memory_skill::MemorySkill, shell_executor::ShellExecutor},
+    skills::{
+        SkillModule, gui_skill::GuiSkill, memory_skill::MemorySkill,
+        shell_executor::ShellExecutor, user_profile_skill::UserProfileSkill,
+        web_search_skill::WebSearchSkill,
+    },
 };
 
 pub fn init_modules_metadata(
@@ -40,7 +44,35 @@ pub fn init_modules_metadata(
             name: String::from("GuiSkill"),
             version: String::from("v0.1.0"),
             _type: ModuleType::Persistent,
-            description: String::from("GUI automation: control mouse, keyboard, take screenshots and open URLs. Cross-platform."),
+            description: String::from(
+                "GUI automation: control mouse, keyboard, take screenshots and open URLs. Cross-platform.",
+            ),
+            author: None,
+        },
+    )?;
+
+    add_or_update_module(
+        &mut modules,
+        ModuleMetadata {
+            name: String::from("WebSearchSkill"),
+            version: String::from("v0.1.0"),
+            _type: ModuleType::Ephemeral,
+            description: String::from(
+                "Search the web and read webpage content using DuckDuckGo and HTML parsing.",
+            ),
+            author: None,
+        },
+    )?;
+
+    add_or_update_module(
+        &mut modules,
+        ModuleMetadata {
+            name: String::from("UserProfileSkill"),
+            version: String::from("v0.1.0"),
+            _type: ModuleType::Persistent,
+            description: String::from(
+                "Manages persistent user profile with preferences, habits and settings.",
+            ),
             author: None,
         },
     )?;
@@ -64,7 +96,15 @@ pub fn init_modules_metadata(
         llm_config: context.config.llm.clone(),
     }));
 
-    return Ok(skills);
+    let _web_search_metadata = find_module(&mut modules, &String::from("WebSearchSkill"))?;
+    skills.push(Box::new(WebSearchSkill {
+        metadata: _web_search_metadata.clone(),
+    }));
+
+    let _profile_metadata = find_module(&mut modules, &String::from("UserProfileSkill"))?;
+    skills.push(Box::new(UserProfileSkill::new()));
+
+    Ok(skills)
 }
 
 pub fn find_module<'a>(
@@ -74,15 +114,11 @@ pub fn find_module<'a>(
     let module = modules.iter_mut().find(|x| &x.name == name);
 
     match module {
-        Some(value) => {
-            return Ok(value);
-        }
-        None => {
-            return Err(IgrisError::SkillNotFound(format!(
-                "Skill not found: {}",
-                name
-            )));
-        }
+        Some(value) => Ok(value),
+        None => Err(IgrisError::SkillNotFound(format!(
+            "Skill not found: {}",
+            name
+        ))),
     }
 }
 
@@ -108,11 +144,9 @@ pub fn add_or_update_module(
             IgrisError::SkillNotFound(_) => {
                 modules.push(new_module);
             }
-            error => {
-                return Err(error);
-            }
+            error => return Err(error),
         },
     }
 
-    return Ok(());
+    Ok(())
 }
