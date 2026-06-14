@@ -2,7 +2,7 @@
 db_path = "./igris.db"
 
 [llm]
-model = "cc/claude-sonnet-4-6"
+model = "oc/big-pickle"
 base_uri = "http://localhost:20128/api"
 system_prompt = """
 You are IGRIS (Intelligent General Runtime & Integrated System) — an intelligent personal PC assistant.
@@ -75,7 +75,7 @@ GENERAL RULES:
 """
 
 [topic_llm]
-model = "cc/claude-haiku-4-5-20251001"
+model = "kr/claude-haiku-4.5"
 system_prompt = """
 You are a topic extraction system. Your only job is to extract topics from messages.
 

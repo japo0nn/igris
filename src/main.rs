@@ -38,9 +38,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let connection = init_database(&config)?;
 
+    let spinner = crate::core::spinner::Spinner::new();
     let context = CoreContext {
         connection: Arc::new(Mutex::new(connection)),
         config: config,
+        spinner,
     };
 
     let skills = init_modules_metadata(&context)?;

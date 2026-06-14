@@ -68,6 +68,7 @@ pub async fn execute_agent_loop(
                 break 'outer;
             }
 
+            context.spinner.begin_round();
             let total = response.actions.len();
             let mut combined_output = String::new();
             let mut error_result: Option<IgrisError> = None;

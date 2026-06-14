@@ -2,3 +2,4 @@
 igris.db
 secrets.toml
 supervisor.log
+*.bak*
