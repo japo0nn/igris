@@ -169,7 +169,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&last.content) {
                     if let Some(msg) = json_value.get("message").and_then(|v| v.as_str()) {
                         if !msg.is_empty() {
-                            let _ = std::process::Command::new("say").arg(msg).status();
+                            // Cross-platform TTS (macOS say, Linux espeak, Windows PowerShell)
+                            speak_text(msg);
                             crate::voice::continuous::trigger_cooldown();
                         }
                     }
@@ -182,6 +183,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     sv.log_event(supervisor::SupervisorEvent::Shutdown);
     Ok(())
+}
+
+/// Cross-platform TTS: macOS (say), Linux (espeak/spd-say), Windows (PowerShell SAPI)
+fn speak_text(text: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("say").arg(text).status();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if std::process::Command::new("espeak").arg(text).status().is_ok() {}
+        else { let _ = std::process::Command::new("spd-say").arg(text).status(); }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let ps = format!(
+            "Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.SpeakAsync('{}'); $s.Dispose()",
+            text.replace("'", "''")
+        );
+        let _ = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
+            .status();
+    }
 }
 
 fn load_previous_session_history(context: &CoreContext) -> Vec<AssistantMessage> {

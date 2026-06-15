@@ -115,10 +115,10 @@ impl GuiSkill {
         let path = "C:\\Users\\sosa\\AppData\\Local\\Temp\\igris_screen.png";
 
         #[cfg(not(target_os = "windows"))]
-        let path = "/tmp/igris_screen.png";
+        let path = std::env::temp_dir().join("igris_screen.png").to_string_lossy().to_string();
 
 
-        let img_bytes = std::fs::read(path).map_err(|_| {
+        let img_bytes = std::fs::read(&path).map_err(|_| {
             SkillError::ExecutionFailed(
                 "No screenshot found. Call 'screenshot' method first.".to_string(),
             )
@@ -193,7 +193,7 @@ fn take_screenshot() -> Result<SkillOutput, SkillError> {
     let path = "C:\\Users\\sosa\\AppData\\Local\\Temp\\igris_screen.png";
 
     #[cfg(not(target_os = "windows"))]
-    let path = "/tmp/igris_screen.png";
+    let path = std::env::temp_dir().join("igris_screen.png").to_string_lossy().to_string();
 
     let screens = Screen::all()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to get screens: {}", e)))?;
@@ -222,7 +222,7 @@ fn take_screenshot() -> Result<SkillOutput, SkillError> {
     };
 
     final_image
-        .save(path)
+        .save(&path)
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to save screenshot: {}", e)))?;
 
     Ok(SkillOutput::Text(format!(

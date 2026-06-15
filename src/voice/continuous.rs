@@ -23,7 +23,7 @@ pub fn start_listener(api_key: &str) -> Result<mpsc::Receiver<String>, String> {
         .map(|o| !o.status.success())
         .unwrap_or(true)
     {
-        return Err("ffmpeg not found. Install with: brew install ffmpeg".to_string());
+        return Err("ffmpeg not found. Install ffmpeg for your OS: brew install ffmpeg (macOS), apt install ffmpeg (Linux), or download from ffmpeg.org (Windows)".to_string());
     }
 
     let api_key = api_key.to_string();
@@ -34,6 +34,94 @@ pub fn start_listener(api_key: &str) -> Result<mpsc::Receiver<String>, String> {
     });
 
     Ok(rx)
+}
+
+
+/// Cross-platform ffmpeg microphone capture command
+fn get_ffmpeg_command(sample_rate: u32) -> Result<std::process::Child, String> {
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("ffmpeg")
+            .args(&[
+                "-f", "avfoundation",
+                "-i", ":default",
+                "-ac", "1",
+                "-ar", &sample_rate.to_string(),
+                "-f", "s16le",
+                "-loglevel", "quiet",
+                "pipe:1",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("Failed to start ffmpeg (macOS avfoundation): {}", e))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // Try pulse first, fallback to alsa
+        let pulse = Command::new("ffmpeg")
+            .args(&[
+                "-f", "pulse",
+                "-i", "default",
+                "-ac", "1",
+                "-ar", &sample_rate.to_string(),
+                "-f", "s16le",
+                "-loglevel", "quiet",
+                "pipe:1",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn();
+        match pulse {
+            Ok(child) => Ok(child),
+            Err(_) => {
+                Command::new("ffmpeg")
+                    .args(&[
+                        "-f", "alsa",
+                        "-i", "default",
+                        "-ac", "1",
+                        "-ar", &sample_rate.to_string(),
+                        "-f", "s16le",
+                        "-loglevel", "quiet",
+                        "pipe:1",
+                    ])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .map_err(|e| format!("Failed to start ffmpeg (Linux pulse/alsa): {}", e))
+            }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Try common microphone device names on Windows
+        let devices = ["audio=Microphone", "audio=Microphone (Realtek Audio)", "audio=default"];
+        let mut last_err = "No microphone found".to_string();
+        for device in &devices {
+            match Command::new("ffmpeg")
+                .args(&[
+                    "-f", "dshow",
+                    "-i", device,
+                    "-ac", "1",
+                    "-ar", &sample_rate.to_string(),
+                    "-f", "s16le",
+                    "-loglevel", "quiet",
+                    "pipe:1",
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+            {
+                Ok(child) => return Ok(child),
+                Err(e) => last_err = format!("dshow error: {}", e),
+            }
+        }
+        Err(format!("Failed to start ffmpeg (Windows dshow): {}", last_err))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        Err("Voice input not supported on this OS".to_string())
+    }
 }
 
 fn run_listener(api_key: String, tx: mpsc::Sender<String>) {
@@ -51,26 +139,7 @@ fn run_listener(api_key: String, tx: mpsc::Sender<String>) {
     let mut noise_floor: f64 = 50.0;
     let mut frame_count: u64 = 0;
 
-    let mut child = match Command::new("ffmpeg")
-        .args(&[
-            "-f",
-            "avfoundation",
-            "-i",
-            ":default",
-            "-ac",
-            "1",
-            "-ar",
-            &sample_rate.to_string(),
-            "-f",
-            "s16le",
-            "-loglevel",
-            "quiet",
-            "pipe:1",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-    {
+    let mut child = match get_ffmpeg_command(sample_rate) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[Voice] Failed to launch ffmpeg: {}", e);

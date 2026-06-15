@@ -57,7 +57,7 @@ impl UserProfileSkill {
     pub fn new() -> Self {
         let profile_path = dirs::home_dir()
             .map(|p| p.join(".igris").join("user_profile.json"))
-            .unwrap_or_else(|| PathBuf::from("/tmp/igris_user_profile.json"));
+            .unwrap_or_else(|| std::env::temp_dir().join("igris_user_profile.json"));
 
         let profile = if profile_path.exists() {
             fs::read_to_string(&profile_path)
