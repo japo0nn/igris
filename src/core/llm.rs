@@ -7,29 +7,59 @@ pub async fn ask_llm(
     config: &AppConfig,
     _max_tokens: u32,
 ) -> Result<String, IgrisError> {
-    let client = reqwest::Client::new();
+    let max_retries = config.llm.retry_max_retries;
+    let initial_delay = config.llm.retry_initial_delay_ms;
+    let mut last_error: Option<IgrisError> = None;
 
-    let request_body = serde_json::json!({
-        "model": &config.llm.model,
-        "messages": messages,
-        "stream": false,
-    })
-    .to_string();
+    for attempt in 0..max_retries {
+        let client = reqwest::Client::new();
 
-    let response = client
-        .post(format!("{}/v1/chat/completions", config.llm.base_uri))
-        .header(
-            AUTHORIZATION,
-            format!("Bearer {}", config.llm.api_key.as_deref().unwrap_or("")),
-        )
-        .header(CONTENT_TYPE, "application/json")
-        .body(request_body)
-        .send()
-        .await?
-        .text()
-        .await?;
+        let request_body = serde_json::json!({
+            "model": &config.llm.model,
+            "messages": messages,
+            "stream": false,
+        })
+        .to_string();
 
-    return Ok(extract_content(&response)?);
+        match client
+            .post(format!("{}/v1/chat/completions", config.llm.base_uri))
+            .header(
+                AUTHORIZATION,
+                format!("Bearer {}", config.llm.api_key.as_deref().unwrap_or("")),
+            )
+            .header(CONTENT_TYPE, "application/json")
+            .body(request_body)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                match response.text().await {
+                    Ok(text) => {
+                        return Ok(extract_content(&text)?);
+                    }
+                    Err(e) => {
+                        last_error = Some(IgrisError::LlmUnavailable(format!("Response read failed: {}", e)));
+                    }
+                }
+            }
+            Err(e) => {
+                if e.is_timeout() {
+                    last_error = Some(IgrisError::LlmTimeout(e.to_string()));
+                } else if e.is_connect() || e.is_request() {
+                    last_error = Some(IgrisError::LlmUnavailable(e.to_string()));
+                } else {
+                    last_error = Some(IgrisError::LlmUnavailable(e.to_string()));
+                }
+            }
+        }
+
+        if attempt < max_retries - 1 {
+            let delay = std::time::Duration::from_millis(initial_delay * (attempt as u64 + 1));
+            tokio::time::sleep(delay).await;
+        }
+    }
+
+    Err(last_error.unwrap_or(IgrisError::LlmUnavailable("All retries exhausted".to_string())))
 }
 
 pub async fn generate_topics(
@@ -83,9 +113,7 @@ fn extract_content(response: &str) -> Result<String, IgrisError> {
     let content = raw["choices"][0]["message"]["content"]
         .as_str()
         .unwrap_or_default()
-        .to_string()
-        .replace("", "")
-        .replace("", "");
+        .to_string();
 
     let stripped = remove_markdown_wrapper(&content);
     Ok(sanitize_json_strings(&stripped))
@@ -100,23 +128,20 @@ fn sanitize_json_strings(json: &str) -> String {
         match ch {
             '\\' if in_string => {
                 match chars.peek() {
-                    // Валидные JSON escapes — копируем оба символа как есть
                     Some(&'"') | Some(&'\\') | Some(&'/') | Some(&'b') | Some(&'f')
                     | Some(&'n') | Some(&'r') | Some(&'t') => {
                         result.push('\\');
                         result.push(chars.next().unwrap());
                     }
-                    // \uXXXX — копируем все 6 символов
                     Some(&'u') => {
                         result.push('\\');
-                        result.push(chars.next().unwrap()); // 'u'
+                        result.push(chars.next().unwrap());
                         for _ in 0..4 {
                             if let Some(c) = chars.next() {
                                 result.push(c);
                             }
                         }
                     }
-                    // \x, \e, \1, и любые другие невалидные — экранируем бэкслэш
                     _ => result.push_str("\\\\"),
                 }
             }
@@ -124,7 +149,6 @@ fn sanitize_json_strings(json: &str) -> String {
                 in_string = !in_string;
                 result.push('"');
             }
-            // Реальные control chars внутри строки — экранируем
             '\n' if in_string => result.push_str("\\n"),
             '\r' if in_string => result.push_str("\\r"),
             '\t' if in_string => result.push_str("\\t"),

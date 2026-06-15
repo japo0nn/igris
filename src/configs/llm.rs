@@ -59,6 +59,10 @@ pub struct LlmConfig {
     pub retention_days: i32,
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
+    #[serde(default = "default_retry_max_retries")]
+    pub retry_max_retries: u32,
+    #[serde(default = "default_retry_initial_delay_ms")]
+    pub retry_initial_delay_ms: u64,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -85,6 +89,14 @@ fn default_max_tokens() -> u32 {
 
 fn default_topic_max_tokens() -> u32 {
     1024
+}
+
+fn default_retry_max_retries() -> u32 {
+    3
+}
+
+fn default_retry_initial_delay_ms() -> u64 {
+    1000
 }
 
 pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::Error>> {

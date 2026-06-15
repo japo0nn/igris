@@ -1,5 +1,7 @@
-use reqwest::blocking::Client;
+use reqwest::blocking::Client as BlockingClient;
+use reqwest::header::{HeaderMap, USER_AGENT, ACCEPT, ACCEPT_LANGUAGE};
 use scraper::{Html, Selector};
+use std::time::Duration;
 
 use crate::{
     models::metadata::ModuleMetadata,
@@ -15,76 +17,174 @@ impl WebSearchSkill {
         WebSearchSkill {
             metadata: ModuleMetadata {
                 name: "WebSearchSkill".to_string(),
-                version: "0.1.0".to_string(),
+                version: "0.2.0".to_string(),
                 _type: crate::models::metadata::ModuleType::Persistent,
                 description:
-                    "Search the web and read webpage content using DuckDuckGo and HTML parsing."
+                    "Search the web using DuckDuckGo (primary) and SearXNG as fallback."
                         .to_string(),
                 author: Some("IGRIS".to_string()),
             },
         }
     }
-}
 
-impl WebSearchSkill {
-    fn search_duckduckgo(&self, query: &str) -> Result<String, SkillError> {
-        let client = Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Igris/0.1")
+    fn build_client() -> Result<BlockingClient, SkillError> {
+        let mut headers = HeaderMap::new();
+        headers.insert(USER_AGENT, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".parse().unwrap());
+        headers.insert(ACCEPT, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8".parse().unwrap());
+        headers.insert(ACCEPT_LANGUAGE, "en-US,en;q=0.9".parse().unwrap());
+        
+        BlockingClient::builder()
+            .default_headers(headers)
+            .timeout(Duration::from_secs(10))
+            
             .build()
-            .map_err(|e| SkillError::ExecutionFailed(format!("Failed to build client: {}", e)))?;
+            .map_err(|e| SkillError::ExecutionFailed(format!("Failed to build client: {}", e)))
+    }
 
-        let url = format!("https://lite.duckduckgo.com/lite/?q={}", urlencoding(query));
+    fn search_duckduckgo(&self, query: &str) -> Result<Option<String>, SkillError> {
+        let client = Self::build_client()?;
+        let url = format!("https://html.duckduckgo.com/html/?q={}", urlencoding(query));
+        
         let resp = client
             .get(&url)
             .send()
-            .map_err(|e| SkillError::ExecutionFailed(format!("Request failed: {}", e)))?
+            .map_err(|e| SkillError::ExecutionFailed(format!("Request failed: {}", e)))?;
+        
+        let body = resp
             .text()
-            .map_err(|e| SkillError::ExecutionFailed(format!("Read body failed: {}", e)))?;
+            .map_err(|e| SkillError::ExecutionFailed(format!("Read body: {}", e)))?;
 
-        let document = Html::parse_document(&resp);
-        let result_selector = Selector::parse(".result__title a, .result__snippet")
-            .map_err(|e| SkillError::ExecutionFailed(format!("Selector error: {}", e)))?;
-
-        let mut results = Vec::new();
-        let mut current_title = String::new();
-
-        for element in document.select(&result_selector) {
-            let text = element.text().collect::<String>().trim().to_string();
-            if element
-                .value()
-                .has_class("result__title", scraper::CaseSensitivity::CaseSensitive)
-                || element.value().has_class(
-                    "result__title",
-                    scraper::CaseSensitivity::AsciiCaseInsensitive,
-                )
-            {
-                if let Some(href) = element.value().attr("href") {
-                    current_title = format!("[{}]({})", text, href);
-                } else {
-                    current_title = text;
-                }
-            } else {
-                if !current_title.is_empty() {
-                    results.push(format!("{} — {}", current_title, text));
-                    current_title.clear();
-                }
-            }
+        // Check for captcha
+        if body.contains("challenge-form") || body.contains("anomaly-modal") || body.contains("Please complete the following challenge") {
+            return Ok(None); // captcha detected
         }
 
+        let document = Html::parse_document(&body);
+        let result_selector = Selector::parse(".result__body").map_err(|_| SkillError::ExecutionFailed("Selector parse error".to_string()))?;
+        
+        let mut results = Vec::new();
+        
+        for element in document.select(&result_selector) {
+            let title_sel = Selector::parse(".result__title a").unwrap();
+            let snippet_sel = Selector::parse(".result__snippet").unwrap();
+            
+            let title = element.select(&title_sel).next()
+                .and_then(|a| a.text().collect::<String>().into())
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            
+            let url = element.select(&title_sel).next()
+                .and_then(|a| a.value().attr("href"))
+                .unwrap_or("")
+                .to_string();
+            
+            let snippet = element.select(&snippet_sel).next()
+                .map(|s| s.text().collect::<String>())
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            
+            if !title.is_empty() {
+                let clean_url = url.split("uddg=").nth(1)
+                    .and_then(|u| u.split('&').next())
+                    .and_then(|u| urlencoding_decode(u))
+                    .unwrap_or(url)
+                    .to_string();
+                
+                if snippet.is_empty() {
+                    results.push(format!("[{}]({})", title, clean_url));
+                } else {
+                    results.push(format!("[{}]({}) - {}", title, clean_url, snippet));
+                }
+            }
+            
+            if results.len() >= 8 {
+                break;
+            }
+        }
+        
         if results.is_empty() {
-            Ok("No results found.".to_string())
+            Ok(None)
         } else {
-            Ok(results.join("\n"))
+            Ok(Some(results.join("\n")))
         }
     }
 
-    fn read_webpage(&self, url: &str) -> Result<String, SkillError> {
-        let client = Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Igris/0.1")
-            .timeout(std::time::Duration::from_secs(15))
+    fn search_searxng(&self, query: &str) -> Result<String, SkillError> {
+        let instances = vec![
+            "https://searx.be",
+            "https://search.sapti.me",
+            "https://search.studentb-tech.space",
+            "https://priv.au",
+            "https://s.mble.dk",
+        ];
+        
+        let client = BlockingClient::builder()
+            .timeout(Duration::from_secs(5))
             .build()
             .map_err(|e| SkillError::ExecutionFailed(format!("Client build: {}", e)))?;
+        
+        let mut last_error = String::new();
+        
+        for instance in &instances {
+            let url = format!("{}/search?q={}&format=json&language=en&categories=general&pageno=1",
+                instance, urlencoding(query));
+            
+            match client.get(&url)
+                .header(USER_AGENT, "Mozilla/5.0")
+                .send()
+            {
+                Ok(resp) => {
+                    if !resp.status().is_success() {
+                        last_error = format!("{} returned status {}", instance, resp.status());
+                        continue;
+                    }
+                    
+                    match resp.json::<serde_json::Value>() {
+                        Ok(json) => {
+                            let results = json["results"]
+                                .as_array()
+                                .map(|arr| {
+                                    arr.iter().take(8).filter_map(|r| {
+                                        let title = r["title"].as_str().unwrap_or("").to_string();
+                                        let url = r["url"].as_str().unwrap_or("").to_string();
+                                        let content = r["content"].as_str().unwrap_or("").to_string();
+                                        if title.is_empty() && url.is_empty() {
+                                            None
+                                        } else if content.is_empty() {
+                                            Some(format!("[{}]({})", title, url))
+                                        } else {
+                                            Some(format!("[{}]({}) - {}", title, url, content))
+                                        }
+                                    }).collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default();
+                            
+                            if !results.is_empty() {
+                                return Ok(results.join("\n"));
+                            }
+                            last_error = format!("{} returned empty results", instance);
+                        }
+                        Err(e) => {
+                            last_error = format!("{} JSON parse: {}", instance, e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    last_error = format!("{} connection: {}", instance, e);
+                }
+            }
+        }
+        
+        Err(SkillError::ExecutionFailed(format!(
+            "All SearXNG instances failed: {}", last_error
+        )))
+    }
 
+    fn read_webpage(&self, url: &str) -> Result<String, SkillError> {
+        let client = Self::build_client()?;
+        
         let resp = client
             .get(url)
             .send()
@@ -154,7 +254,17 @@ impl SkillModule for WebSearchSkill {
                 if args.trim().is_empty() {
                     return Err(SkillError::InvalidArgs("Query is required".to_string()));
                 }
-                let result = self.search_duckduckgo(args.trim())?;
+                let query = args.trim();
+                
+                // Try DuckDuckGo first
+                match self.search_duckduckgo(query) {
+                    Ok(Some(results)) => return Ok(SkillOutput::Text(results)),
+                    Ok(None) => { /* captcha or no results, fall through */ }
+                    Err(_) => { /* fall through to SearXNG */ }
+                }
+                
+                // Fallback to SearXNG
+                let result = self.search_searxng(query)?;
                 Ok(SkillOutput::Text(result))
             }
             "read_page" => {
@@ -175,7 +285,7 @@ impl SkillModule for WebSearchSkill {
         vec![
             MethodInfo {
                 method: "search_web".to_string(),
-                description: "Search the internet using DuckDuckGo. Returns up to 10 results with titles, snippets, and links.".to_string(),
+                description: "Search the internet using DuckDuckGo with SearXNG fallback. Returns up to 8 results.".to_string(),
                 args_description: "Search query. Example: 'rust programming tutorial'".to_string(),
             },
             MethodInfo {
@@ -195,4 +305,22 @@ fn urlencoding(s: &str) -> String {
             other => format!("%{:02X}", other as u8),
         })
         .collect()
+}
+
+fn urlencoding_decode(s: &str) -> Option<String> {
+    let mut result = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            let hex: String = chars.by_ref().take(2).collect();
+            if hex.len() == 2 {
+                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                    result.push(byte as char);
+                    continue;
+                }
+            }
+        }
+        result.push(c);
+    }
+    Some(result)
 }

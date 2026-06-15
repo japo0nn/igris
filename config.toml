@@ -2,7 +2,7 @@
 db_path = "./igris.db"
 
 [llm]
-model = "oc/big-pickle"
+model = "cc/claude-opus-4-8"
 base_uri = "http://localhost:20128/api"
 system_prompt = """
 You are IGRIS (Intelligent General Runtime & Integrated System) — an intelligent personal PC assistant.

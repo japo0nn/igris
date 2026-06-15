@@ -89,9 +89,9 @@ pub async fn execute_agent_loop(
 
         if let Some(ref constraints) = response.constraints {
             if iteration >= constraints.max_iterations {
-                return Err(IgrisError::MaxIterationsExceeded(
-                    constraints.max_iterations as usize,
-                ));
+                response.message = format!("Max iterations exceeded ({}). Please refine your request or start over.", constraints.max_iterations);
+                response.is_done = true;
+                response.actions = vec![];
             }
         }
 
@@ -342,7 +342,22 @@ pub async fn execute_agent_loop(
                         session,
                     )
                     .await?;
-                    return Err(IgrisError::MaxIterationsExceeded(max_iter as usize));
+                    let final_response = ActionResponse {
+                        message: format!("Max iterations exceeded ({}).", max_iter),
+                        is_done: true,
+                        actions: vec![],
+                        iteration,
+                        fix_iteration,
+                        constraints: None,
+                    };
+                    spawn_save_message(
+                        context,
+                        "assistant".to_string(),
+                        &final_response,
+                        session,
+                    )
+                    .await?;
+                    break 'outer;
                 }
 
                 let task_object = build_task_object(
@@ -388,9 +403,16 @@ pub async fn execute_agent_loop(
                         fix_iteration = value.fix_iteration;
                         if let Some(ref constraints) = value.constraints {
                             if iteration >= constraints.max_iterations {
-                                return Err(IgrisError::MaxIterationsExceeded(
-                                    constraints.max_iterations as usize,
-                                ));
+                                let done = ActionResponse {
+                                    message: format!("Max iterations exceeded ({}).", constraints.max_iterations),
+                                    is_done: true,
+                                    actions: vec![],
+                                    iteration,
+                                    fix_iteration,
+                                    constraints: None,
+                                };
+                                spawn_save_message(context, "assistant".to_string(), &done, session).await?;
+                                break 'outer;
                             }
                         }
 
@@ -577,10 +599,9 @@ async fn handle_error(
     // Non-recoverable errors: immediately return to user
     if should_abort_on_error(&error) {
         let error_msg = format!(
-            "[IGRIS ERROR] Non-recoverable error: {}\nTask has been stopped.",
+            "[IGRIS] Non-recoverable error: {}. Task has been stopped.",
             error
         );
-        eprintln!("\x1b[31m{}\x1b[0m", error_msg);
         spawn_save_message(
             context,
             "user".to_string(),
@@ -595,7 +616,16 @@ async fn handle_error(
             session,
         )
         .await?;
-        return Err(error);
+        let final_response = ActionResponse {
+            message: error_msg,
+            is_done: true,
+            actions: vec![],
+            iteration: 0,
+            fix_iteration: 0,
+            constraints: None,
+        };
+        return Ok(serde_json::to_string(&final_response)
+            .map_err(|_| IgrisError::ParseError("Serialization failed".to_string()))?);
     }
     if save_raw_content {
         messages.push(AssistantMessage {
