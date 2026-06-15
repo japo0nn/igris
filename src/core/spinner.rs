@@ -42,37 +42,52 @@ impl Spinner {
             let mut msg = self.message.lock().unwrap();
             *msg = initial_message;
         }
+
         let running = self.running.clone();
         let message = self.message.clone();
         let log_lines = self.log_lines.clone();
         let line_count = self.line_count.clone();
+
         tokio::spawn(async move {
-            let mut idx = 0usize;
-            let mut stderr = std::io::stderr();
-            let mut first = true;
-            while running.load(Ordering::SeqCst) {
-                let ch = SPINNER_CHARS[idx % SPINNER_CHARS.len()] as char;
+            if cfg!(windows) {
+                // Windows: print initial message once, no fancy animation
                 let msg = { message.lock().unwrap().clone() };
-                let lines = { log_lines.lock().unwrap().clone() };
-                let prev_lines = { *line_count.lock().unwrap() };
-                let cur_lines = lines.len();
-
-                if !first && prev_lines > 0 {
-                    write!(stderr, "\r\x1b[{}A", prev_lines).ok();
-                }
-                first = false;
-
-                // Print log lines (with | prefix)
-                for line in &lines {
-                    writeln!(stderr, "{}", line).ok();
-                }
-                // Print spinner line
-                write!(stderr, "\x1b[36m{}\x1b[0m \x1b[1m{}\x1b[0m\n", ch, msg).ok();
+                let mut stderr = std::io::stderr();
+                writeln!(stderr, "\x1b[2m[IGRIS] {}\x1b[0m", msg).ok();
                 stderr.flush().ok();
+                // Wait silently until stopped
+                while running.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+            } else {
+                // Unix/macOS: original spinner animation with ANSI escapes
+                let mut idx = 0usize;
+                let mut stderr = std::io::stderr();
+                let mut first = true;
+                while running.load(Ordering::SeqCst) {
+                    let ch = SPINNER_CHARS[idx % SPINNER_CHARS.len()] as char;
+                    let msg = { message.lock().unwrap().clone() };
+                    let lines = { log_lines.lock().unwrap().clone() };
+                    let prev_lines = { *line_count.lock().unwrap() };
+                    let cur_lines = lines.len();
 
-                *line_count.lock().unwrap() = cur_lines + 1;
-                idx += 1;
-                tokio::time::sleep(Duration::from_millis(200)).await;
+                    if !first && prev_lines > 0 {
+                        write!(stderr, "\r\x1b[{}A", prev_lines).ok();
+                    }
+                    first = false;
+
+                    // Print log lines (with | prefix)
+                    for line in &lines {
+                        writeln!(stderr, "{}", line).ok();
+                    }
+                    // Print spinner line
+                    write!(stderr, "\x1b[36m{}\x1b[0m \x1b[1m{}\x1b[0m\n", ch, msg).ok();
+                    stderr.flush().ok();
+
+                    *line_count.lock().unwrap() = cur_lines + 1;
+                    idx += 1;
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
             }
         });
     }
@@ -84,7 +99,13 @@ impl Spinner {
 
     pub fn add_log_line(&self, line: String) {
         let mut l = self.log_lines.lock().unwrap();
-        l.push(line);
+        l.push(line.clone());
+        if cfg!(windows) {
+            // On Windows, print immediately to stderr so user sees progress
+            let mut stderr = std::io::stderr();
+            writeln!(stderr, "{}", line).ok();
+            stderr.flush().ok();
+        }
     }
 
     pub fn set_last_full_output(&self, output: String) {
@@ -97,7 +118,6 @@ impl Spinner {
     }
 
     /// Clear previous log lines and reset line count for a new round.
-    /// Prints escape sequences to erase the previous block from terminal.
     pub fn begin_round(&self) {
         let prev = {
             let mut lc = self.line_count.lock().unwrap();
@@ -109,9 +129,9 @@ impl Spinner {
             let mut ll = self.log_lines.lock().unwrap();
             ll.clear();
         }
-        if prev > 0 {
+        if !cfg!(windows) && prev > 0 {
+            // On Unix: use ANSI escapes to clear previous lines
             let mut stderr = std::io::stderr();
-            // Move up and clear each line
             for _ in 0..prev {
                 write!(stderr, "\r\x1b[K\x1b[1A").ok();
             }
@@ -119,6 +139,7 @@ impl Spinner {
             write!(stderr, "\r\x1b[K").ok();
             stderr.flush().ok();
         }
+        // On Windows: do nothing, just let new output accumulate
     }
 
     pub async fn stop(&self, _answer: String) {

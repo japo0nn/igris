@@ -1,4 +1,4 @@
-use std::process::Command;
+﻿use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
@@ -67,7 +67,7 @@ impl SkillModule for GuiSkill {
         vec![
             MethodInfo {
                 method: "screenshot".to_string(),
-                description: "Capture the current screen and save to /tmp/igris_screen.png. ALWAYS call this before analyze_screen or clicking. Requires Screen Recording permission on macOS.".to_string(),
+                description: "Capture the current screen and save to C:\\Users\\sosa\\AppData\\Local\\Temp\\igris_screen.png(Windowns) or /tmp/igris_screen.png(MacOS and Linux). ALWAYS call this before analyze_screen or clicking. Requires Screen Recording permission on macOS.".to_string(),
                 args_description: "No arguments required. Pass an empty string.".to_string(),
             },
             MethodInfo {
@@ -111,7 +111,12 @@ impl SkillModule for GuiSkill {
 
 impl GuiSkill {
     fn analyze_screen(&self, question: &str) -> Result<SkillOutput, SkillError> {
+        #[cfg(target_os = "windows")]
+        let path = "C:\\Users\\sosa\\AppData\\Local\\Temp\\igris_screen.png";
+
+        #[cfg(not(target_os = "windows"))]
         let path = "/tmp/igris_screen.png";
+
 
         let img_bytes = std::fs::read(path).map_err(|_| {
             SkillError::ExecutionFailed(
@@ -128,7 +133,6 @@ impl GuiSkill {
 
         let payload = json!({
             "model": vision_model,
-            "max_tokens": 1024,
             "stream": false,
             "messages": [{
                 "role": "user",
@@ -185,7 +189,12 @@ impl GuiSkill {
 }
 
 fn take_screenshot() -> Result<SkillOutput, SkillError> {
+    #[cfg(target_os = "windows")]
+    let path = "C:\\Users\\sosa\\AppData\\Local\\Temp\\igris_screen.png";
+
+    #[cfg(not(target_os = "windows"))]
     let path = "/tmp/igris_screen.png";
+
     let screens = Screen::all()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to get screens: {}", e)))?;
     let screen = screens
@@ -351,8 +360,8 @@ fn open_in_browser(url: &str) -> Result<(), SkillError> {
 
 #[cfg(target_os = "windows")]
 fn open_in_browser(url: &str) -> Result<(), SkillError> {
-    Command::new("cmd")
-        .args(["/C", "start", "", url])
+    Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &format!("Start-Process '{}'", url)])
         .status()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to open URL: {}", e)))
         .map(|_| ())

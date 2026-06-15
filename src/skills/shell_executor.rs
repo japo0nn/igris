@@ -36,8 +36,15 @@ impl SkillModule for ShellExecutor {
     fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         if method == "execute_command" {
             #[cfg(target_os = "windows")]
-            let result = Command::new("cmd")
-                .args(["/C", &format!("chcp 65001 > nul && {}", args)])
+            let result = Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-OutputFormat",
+                    "Text",
+                    "-Command",
+                    args,
+                ])
                 .output();
 
             #[cfg(not(target_os = "windows"))]
@@ -59,11 +66,9 @@ impl SkillModule for ShellExecutor {
                         ));
                     }
 
-                    #[cfg(target_os = "windows")]
-                    {
-                        let (decoded, _, _) = encoding_rs::WINDOWS_1251.decode(&output.stdout);
-                        return Ok(SkillOutput::Text(decoded.to_string()));
-                    }
+                    return Ok(SkillOutput::Text(
+                        String::from_utf8_lossy(&output.stdout).to_string(),
+                    ));
 
                     #[cfg(not(target_os = "windows"))]
                     {
@@ -87,9 +92,10 @@ impl SkillModule for ShellExecutor {
     fn available_methods(&self) -> Vec<MethodInfo> {
         vec![MethodInfo {
             method: String::from("execute_command"),
-            description: String::from("Method can be used for running shell commands and programs"),
+            description: String::from("Execute shell commands and programs"),
             args_description: String::from(
-                "Arguments must be the program and its arguments: For example: tree -L 3",
+                "PowerShell command string on Windows, sh command on Linux/macOS. \
+             Example: Get-ChildItem -Path C:\\Users or ls -la /home",
             ),
         }]
     }

@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+﻿use std::borrow::Cow;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -25,7 +25,7 @@ use crate::{
     skills::SkillModule,
 };
 
-const PROMPT: &str = "\x1b[1;34m\u{276f}\x1b[0m ";
+const PROMPT: &str = "\x01\x1b[1;34m\x02\u{276f}\x01\x1b[0m\x02 ";
 
 pub async fn chat_loopback(
     context: &CoreContext,
@@ -58,7 +58,7 @@ pub async fn chat_loopback(
     let _ = rl.load_history(&history_path);
 
     println!(
-        "\x1b[1;32mIGRIS\x1b[0m \x1b[1;36mv0.1.0\x1b[0m — interactive mode. Type \x1b[33m/help\x1b[0m for commands."
+        "\x1b[1;32mIGRIS\x1b[0m \x1b[1;36mv0.1.0\x1b[0m вЂ” interactive mode. Type \x1b[33m/help\x1b[0m for commands."
     );
 
     loop {
@@ -158,11 +158,11 @@ fn handle_slash_command(
         "/help" | "/h" => {
             println!(
                 "\x1b[1;34m... Commands ...\x1b[0m\n\
-                 \x1b[33m/help\x1b[0m, \x1b[33m/h\x1b[0m      — Show this help\n\
-                 \x1b[33m/clear\x1b[0m, \x1b[33m/c\x1b[0m     — Clear the screen\n\
-                 \x1b[33m/exit\x1b[0m, \x1b[33m/q\x1b[0m      — Exit IGRIS\n\
-                 \x1b[33m/history\x1b[0m         — Show recent commands\n\
-                 \x1b[33m/edit\x1b[0m, \x1b[33m/e\x1b[0m      — Open external editor for long input"
+                 \x1b[33m/help\x1b[0m, \x1b[33m/h\x1b[0m      вЂ” Show this help\n\
+                 \x1b[33m/clear\x1b[0m, \x1b[33m/c\x1b[0m     вЂ” Clear the screen\n\
+                 \x1b[33m/exit\x1b[0m, \x1b[33m/q\x1b[0m      вЂ” Exit IGRIS\n\
+                 \x1b[33m/history\x1b[0m         вЂ” Show recent commands\n\
+                 \x1b[33m/edit\x1b[0m, \x1b[33m/e\x1b[0m      вЂ” Open external editor for long input"
             );
             Ok(None)
         }
@@ -354,3 +354,4 @@ impl Validator for IgrisHelper {
         Ok(ValidationResult::Valid(None))
     }
 }
+
