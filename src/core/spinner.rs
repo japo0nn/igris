@@ -1,19 +1,21 @@
-use crate::core::markdown::render_markdown;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-const SPINNER_CHARS: &[u8] = b"-\\|/";
+use crate::core::markdown::render_markdown;
+
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+// ── публичный интерфейс ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct Spinner {
     running: Arc<AtomicBool>,
     message: Arc<Mutex<String>>,
-    log_lines: Arc<Mutex<Vec<String>>>,
-    line_count: Arc<Mutex<usize>>,
     last_full_output: Arc<Mutex<String>>,
+    is_tty: bool,
 }
 
 impl Spinner {
@@ -21,134 +23,100 @@ impl Spinner {
         Spinner {
             running: Arc::new(AtomicBool::new(false)),
             message: Arc::new(Mutex::new(String::new())),
-            log_lines: Arc::new(Mutex::new(Vec::new())),
-            line_count: Arc::new(Mutex::new(0)),
             last_full_output: Arc::new(Mutex::new(String::new())),
+            is_tty: std::io::stderr().is_terminal(),
         }
     }
 
+    /// Запустить спиннер с начальным сообщением.
     pub async fn start(&self, initial_message: String) {
-        // Reset log lines and line count from previous session
-        {
-            let mut ll = self.log_lines.lock().unwrap();
-            ll.clear();
-        }
-        {
-            let mut lc = self.line_count.lock().unwrap();
-            *lc = 0;
-        }
         self.running.store(true, Ordering::SeqCst);
         {
             let mut msg = self.message.lock().unwrap();
-            *msg = initial_message;
+            *msg = initial_message.clone();
         }
 
         let running = self.running.clone();
         let message = self.message.clone();
-        let log_lines = self.log_lines.clone();
-        let line_count = self.line_count.clone();
+        let is_tty = self.is_tty;
 
         tokio::spawn(async move {
-            if cfg!(windows) {
-                // Windows: print initial message once, no fancy animation
-                let msg = { message.lock().unwrap().clone() };
-                let mut stderr = std::io::stderr();
-                writeln!(stderr, "\x1b[2m[IGRIS] {}\x1b[0m", msg).ok();
-                stderr.flush().ok();
-                // Wait silently until stopped
+            if !is_tty {
+                // Не TTY: напечатать один раз и ждать
+                eprintln!("\x1b[2m… {}\x1b[0m", { message.lock().unwrap().clone() });
                 while running.load(Ordering::SeqCst) {
                     tokio::time::sleep(Duration::from_millis(200)).await;
                 }
-            } else {
-                // Unix/macOS: original spinner animation with ANSI escapes
-                let mut idx = 0usize;
-                let mut stderr = std::io::stderr();
-                let mut first = true;
-                while running.load(Ordering::SeqCst) {
-                    let ch = SPINNER_CHARS[idx % SPINNER_CHARS.len()] as char;
-                    let msg = { message.lock().unwrap().clone() };
-                    let lines = { log_lines.lock().unwrap().clone() };
-                    let prev_lines = { *line_count.lock().unwrap() };
-                    let cur_lines = lines.len();
-
-                    if !first && prev_lines > 0 {
-                        write!(stderr, "\r\x1b[{}A", prev_lines).ok();
-                    }
-                    first = false;
-
-                    // Print log lines (with | prefix)
-                    for line in &lines {
-                        writeln!(stderr, "{}", line).ok();
-                    }
-                    // Print spinner line
-                    write!(stderr, "\x1b[36m{}\x1b[0m \x1b[1m{}\x1b[0m\n", ch, msg).ok();
-                    stderr.flush().ok();
-
-                    *line_count.lock().unwrap() = cur_lines + 1;
-                    idx += 1;
-                    tokio::time::sleep(Duration::from_millis(200)).await;
-                }
+                return;
             }
+
+            // TTY: крутить спиннер на одной строке через \r
+            let mut idx = 0usize;
+            while running.load(Ordering::SeqCst) {
+                let frame = SPINNER_FRAMES[idx % SPINNER_FRAMES.len()];
+                let msg = { message.lock().unwrap().clone() };
+                // \r — вернуться в начало строки, \x1b[K — стереть до конца
+                eprint!("\r\x1b[K\x1b[36m{}\x1b[0m \x1b[1m{}\x1b[0m", frame, msg);
+                let _ = std::io::stderr().flush();
+                idx += 1;
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            // Стереть строку спиннера перед выходом
+            eprint!("\r\x1b[K");
+            let _ = std::io::stderr().flush();
         });
     }
 
+    /// Обновить сообщение спиннера на лету.
     pub fn set_message(&self, msg: String) {
-        let mut m = self.message.lock().unwrap();
-        *m = msg;
+        *self.message.lock().unwrap() = msg;
     }
 
-    pub fn add_log_line(&self, line: String) {
-        let mut l = self.log_lines.lock().unwrap();
-        l.push(line.clone());
-        if cfg!(windows) {
-            // On Windows, print immediately to stderr so user sees progress
-            let mut stderr = std::io::stderr();
-            writeln!(stderr, "{}", line).ok();
-            stderr.flush().ok();
+    /// Вывести строку прогресса (лог тулзы/экшена).
+    /// В TTY — сначала стирает спиннер, печатает лог, затем спиннер сам
+    /// восстановится на следующем тике (100 мс).
+    /// Не в TTY — просто println.
+    pub fn log(&self, line: &str) {
+        if self.is_tty {
+            // Стереть текущую строку спиннера, вывести лог, перейти на новую строку
+            eprint!("\r\x1b[K");
+            eprintln!("{}", line);
+            let _ = std::io::stderr().flush();
+        } else {
+            eprintln!("{}", line);
         }
     }
 
+    /// Устаревший алиас — для совместимости с agent.rs без изменений.
+    pub fn add_log_line(&self, line: String) {
+        self.log(&line);
+    }
+
+    /// Сохранить полный вывод последней команды (для /output).
     pub fn set_last_full_output(&self, output: String) {
-        let mut out = self.last_full_output.lock().unwrap();
-        *out = output;
+        *self.last_full_output.lock().unwrap() = output;
     }
 
     pub fn get_last_full_output(&self) -> String {
         self.last_full_output.lock().unwrap().clone()
     }
 
-    /// Clear previous log lines and reset line count for a new round.
+    /// Начало нового раунда — здесь больше ничего не нужно:
+    /// лог уже напечатан, спиннер живёт сам по себе.
     pub fn begin_round(&self) {
-        let prev = {
-            let mut lc = self.line_count.lock().unwrap();
-            let val = *lc;
-            *lc = 0;
-            val
-        };
-        {
-            let mut ll = self.log_lines.lock().unwrap();
-            ll.clear();
-        }
-        if !cfg!(windows) && prev > 0 {
-            // On Unix: use ANSI escapes to clear previous lines
-            let mut stderr = std::io::stderr();
-            for _ in 0..prev {
-                write!(stderr, "\r\x1b[K\x1b[1A").ok();
-            }
-            // Clear the first line as well (spinner line)
-            write!(stderr, "\r\x1b[K").ok();
-            stderr.flush().ok();
-        }
-        // On Windows: do nothing, just let new output accumulate
+        // no-op: лог-строки печатаются сразу через log(), не накапливаются
     }
 
-    pub async fn stop(&self, _answer: String) {
+    /// Остановить спиннер и вывести финальный ответ.
+    pub async fn stop(&self, answer: String) {
         self.running.store(false, Ordering::SeqCst);
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        // Render markdown and print final answer to stdout
-        let rendered = render_markdown(&_answer);
-        let mut stdout = std::io::stdout();
-        writeln!(stdout, "{}", rendered).ok();
-        stdout.flush().ok();
+        // Дать фоновому таску время стереть строку спиннера
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        if !answer.is_empty() {
+            let rendered = render_markdown(&answer);
+            println!("{}", rendered);
+            let _ = std::io::stdout().flush();
+        }
     }
 }

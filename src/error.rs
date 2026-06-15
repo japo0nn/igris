@@ -143,6 +143,7 @@ impl From<SkillError> for IgrisError {
             SkillError::NotFound(msg) => IgrisError::SkillNotFound(msg),
             SkillError::ExecutionFailed(msg) => IgrisError::SkillError(msg),
             SkillError::InvalidArgs(msg) => IgrisError::SkillError(msg),
+            SkillError::Recoverable(msg) => IgrisError::SkillRecoverableError(msg),
         }
     }
 }

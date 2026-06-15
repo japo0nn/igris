@@ -25,7 +25,7 @@ use crate::{
     skills::SkillModule,
 };
 
-const PROMPT: &str = "\x01\x1b[1;34m\x02\u{276f}\x01\x1b[0m\x02 ";
+const PROMPT: &str = "> ";
 
 pub async fn chat_loopback(
     context: &CoreContext,
@@ -336,6 +336,15 @@ impl Hinter for IgrisHelper {
 }
 
 impl Highlighter for IgrisHelper {
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
+        &'s self,
+        prompt: &'p str,
+        _default: bool,
+    ) -> Cow<'b, str> {
+        // Цвет добавляется здесь — rustyline сам знает что это не влияет на ширину
+        Cow::Owned(format!("\x1b[1;34m{}\x1b[0m", prompt))
+    }
+
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
         if line.starts_with('/') {
             Cow::Owned(format!("\x1b[33m{}\x1b[0m", line))
@@ -354,4 +363,3 @@ impl Validator for IgrisHelper {
         Ok(ValidationResult::Valid(None))
     }
 }
-

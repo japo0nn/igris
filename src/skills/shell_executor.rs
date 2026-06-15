@@ -66,16 +66,15 @@ impl SkillModule for ShellExecutor {
                         ));
                     }
 
+                    #[cfg(target_os = "windows")]
                     return Ok(SkillOutput::Text(
                         String::from_utf8_lossy(&output.stdout).to_string(),
                     ));
 
                     #[cfg(not(target_os = "windows"))]
-                    {
-                        return Ok(SkillOutput::Text(
-                            String::from_utf8_lossy(&output.stdout).to_string(),
-                        ));
-                    }
+                    return Ok(SkillOutput::Text(
+                        String::from_utf8_lossy(&output.stdout).to_string(),
+                    ));
                 }
                 Err(e) => {
                     return Err(SkillError::ExecutionFailed(format!(

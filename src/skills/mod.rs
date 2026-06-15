@@ -50,6 +50,7 @@ pub enum SkillError {
     NotFound(String),
     ExecutionFailed(String),
     InvalidArgs(String),
+    Recoverable(String),
 }
 
 impl std::fmt::Display for SkillError {
@@ -58,6 +59,7 @@ impl std::fmt::Display for SkillError {
             SkillError::NotFound(msg) => write!(f, "Skill not found: {}", msg),
             SkillError::ExecutionFailed(msg) => write!(f, "Execution failed: {}", msg),
             SkillError::InvalidArgs(msg) => write!(f, "Invalid args: {}", msg),
+            SkillError::Recoverable(msg) => write!(f, "Recoverable error: {}", msg),
         }
     }
 }

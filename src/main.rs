@@ -46,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         connection: Arc::new(Mutex::new(connection)),
         config: config,
         spinner,
+        supervisor: sv.clone(),
     };
 
     let skills = init_modules_metadata(&context)?;

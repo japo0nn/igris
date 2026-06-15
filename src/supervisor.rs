@@ -5,6 +5,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[derive(Debug, Clone)]
 pub struct Supervisor {
     pub version: String,
     pub binary_path: PathBuf,
