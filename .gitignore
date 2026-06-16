@@ -4,3 +4,4 @@ secrets.toml
 supervisor.log
 *.bak*
 models/
+*.session

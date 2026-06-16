@@ -21,9 +21,6 @@ pub async fn execute_agent_loop(
 ) -> Result<(), IgrisError> {
     let token_limit = context.config.llm.context_token_limit;
 
-    let mut iteration: u32 = 0;
-    let mut fix_iteration: u32 = 0;
-
     context.spinner.start("Thinking...".to_string()).await;
     let mut content = match ask_llm(&messages, &context.config).await {
         Ok(c) => c,
@@ -45,30 +42,6 @@ pub async fn execute_agent_loop(
                 Ok(r) => break r,
                 Err(error) => {
                     eprintln!("System parse error: {}", error);
-                    fix_iteration += 1;
-                    if fix_iteration >= context.config.execution.fix_iteration_limit {
-                        let final_state = format!(
-                            "[FIX ERROR] Max fix iterations reached ({}). Last content: {}",
-                            context.config.execution.fix_iteration_limit, content
-                        );
-                        spawn_save_message(
-                            context,
-                            "user".to_string(),
-                            &ActionResponse {
-                                message: final_state.clone(),
-                                is_done: true,
-                                actions: vec![],
-                                iteration,
-                                fix_iteration,
-                                constraints: None,
-                            },
-                            session,
-                        )
-                        .await?;
-                        return Err(IgrisError::MaxFixIterationsExceeded(
-                            context.config.execution.fix_iteration_limit as usize,
-                        ));
-                    }
                     content = handle_error(
                         IgrisError::LlmInvalidResponse(error.to_string()),
                         content,
@@ -82,20 +55,6 @@ pub async fn execute_agent_loop(
                 }
             }
         };
-
-        iteration = response.iteration;
-        fix_iteration = response.fix_iteration;
-
-        if let Some(ref constraints) = response.constraints {
-            if iteration >= constraints.max_iterations {
-                response.message = format!(
-                    "Max iterations exceeded ({}). Please refine your request or start over.",
-                    constraints.max_iterations
-                );
-                response.is_done = true;
-                response.actions = vec![];
-            }
-        }
 
         spawn_save_message(context, "assistant".to_string(), &response, session).await?;
         messages.push(AssistantMessage {
@@ -288,30 +247,30 @@ pub async fn execute_agent_loop(
                 .set_last_full_output(combined_output.clone());
 
             content = if let Some(err) = error_result {
-                fix_iteration += 1;
-                if fix_iteration >= context.config.execution.fix_iteration_limit {
-                    let final_state = format!(
-                        "[FIX ERROR] Max fix iterations reached ({}). Last task: {}. Error: {}",
-                        context.config.execution.fix_iteration_limit, response.message, err
-                    );
-                    spawn_save_message(
-                        context,
-                        "user".to_string(),
-                        &ActionResponse {
-                            message: final_state.clone(),
-                            is_done: true,
-                            actions: vec![],
-                            iteration,
-                            fix_iteration,
-                            constraints: None,
-                        },
-                        session,
-                    )
-                    .await?;
-                    return Err(IgrisError::MaxFixIterationsExceeded(
-                        context.config.execution.fix_iteration_limit as usize,
-                    ));
-                }
+                // fix_iteration += 1; (removed: value overwritten by response)
+                // if fix_iteration >= context.config.execution.fix_iteration_limit {
+                //     let final_state = format!(
+                //         "[FIX ERROR] Max fix iterations reached ({}). Last task: {}. Error: {}",
+                //         context.config.execution.fix_iteration_limit, response.message, err
+                //     );
+                //     spawn_save_message(
+                //         context,
+                //         "user".to_string(),
+                //         &ActionResponse {
+                //             message: final_state.clone(),
+                //             is_done: true,
+                //             actions: vec![],
+                //             iteration,
+                //             fix_iteration,
+                //             constraints: None,
+                //         },
+                //         session,
+                //     )
+                //     .await?;
+                //     return Err(IgrisError::MaxFixIterationsExceeded(
+                //         context.config.execution.fix_iteration_limit as usize,
+                //     ));
+                // }
                 handle_error(
                     err,
                     content.clone(),
@@ -323,40 +282,6 @@ pub async fn execute_agent_loop(
                 )
                 .await?
             } else {
-                iteration += 1;
-                let max_iter = context.config.execution.iteration_limit;
-                if iteration >= max_iter {
-                    let final_state = format!(
-                        "[LOOP ERROR] Max iterations reached ({}). Last task: {}. Combined output: {}",
-                        max_iter, response.message, combined_output
-                    );
-                    spawn_save_message(
-                        context,
-                        "user".to_string(),
-                        &ActionResponse {
-                            message: final_state.clone(),
-                            is_done: true,
-                            actions: vec![],
-                            iteration,
-                            fix_iteration,
-                            constraints: None,
-                        },
-                        session,
-                    )
-                    .await?;
-                    let final_response = ActionResponse {
-                        message: format!("Max iterations exceeded ({}).", max_iter),
-                        is_done: true,
-                        actions: vec![],
-                        iteration,
-                        fix_iteration,
-                        constraints: None,
-                    };
-                    spawn_save_message(context, "assistant".to_string(), &final_response, session)
-                        .await?;
-                    break 'outer;
-                }
-
                 let task_object = build_task_object(
                     &response.message,
                     skills,
@@ -367,8 +292,8 @@ pub async fn execute_agent_loop(
                     message: combined_output.clone(),
                     is_done: true,
                     actions: vec![],
-                    iteration,
-                    fix_iteration,
+                    iteration: 0,
+                    fix_iteration: 0,
                     constraints: None,
                 };
                 spawn_save_message(context, "user".to_string(), &user_msg, session).await?;
@@ -396,32 +321,6 @@ pub async fn execute_agent_loop(
             response = loop {
                 match serde_json::from_str::<ActionResponse>(&content) {
                     Ok(value) => {
-                        iteration = value.iteration;
-                        fix_iteration = value.fix_iteration;
-                        if let Some(ref constraints) = value.constraints {
-                            if iteration >= constraints.max_iterations {
-                                let done = ActionResponse {
-                                    message: format!(
-                                        "Max iterations exceeded ({}).",
-                                        constraints.max_iterations
-                                    ),
-                                    is_done: true,
-                                    actions: vec![],
-                                    iteration,
-                                    fix_iteration,
-                                    constraints: None,
-                                };
-                                spawn_save_message(
-                                    context,
-                                    "assistant".to_string(),
-                                    &done,
-                                    session,
-                                )
-                                .await?;
-                                break 'outer;
-                            }
-                        }
-
                         spawn_save_message(context, "assistant".to_string(), &value, session)
                             .await?;
                         messages.push(AssistantMessage {
@@ -432,30 +331,6 @@ pub async fn execute_agent_loop(
                     }
                     Err(error) => {
                         eprintln!("System parse error: {}", error);
-                        fix_iteration += 1;
-                        if fix_iteration >= context.config.execution.fix_iteration_limit {
-                            let final_state = format!(
-                                "[FIX ERROR] Max fix iterations reached ({}). Last content: {}",
-                                context.config.execution.fix_iteration_limit, content
-                            );
-                            spawn_save_message(
-                                context,
-                                "user".to_string(),
-                                &ActionResponse {
-                                    message: final_state.clone(),
-                                    is_done: true,
-                                    actions: vec![],
-                                    iteration,
-                                    fix_iteration,
-                                    constraints: None,
-                                },
-                                session,
-                            )
-                            .await?;
-                            return Err(IgrisError::MaxFixIterationsExceeded(
-                                context.config.execution.fix_iteration_limit as usize,
-                            ));
-                        }
                         content = handle_error(
                             IgrisError::LlmInvalidResponse(error.to_string()),
                             content,
@@ -691,8 +566,7 @@ fn should_abort_on_error(error: &IgrisError) -> bool {
         IgrisError::PermissionDenied(_)
             | IgrisError::LlmUnavailable(_)
             | IgrisError::LlmTimeout(_)
-            | IgrisError::ConfigError(_)
-            | IgrisError::MaxIterationsExceeded(_)
-            | IgrisError::MaxFixIterationsExceeded(_)
+            | IgrisError::ConfigError(_) // | IgrisError::MaxIterationsExceeded(_)
+                                         // | IgrisError::MaxFixIterationsExceeded(_)
     )
 }

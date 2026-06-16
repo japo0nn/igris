@@ -1,4 +1,4 @@
-﻿use serde::Deserialize;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {
@@ -6,17 +6,37 @@ pub struct AppConfig {
     pub topic_llm: TopicLlmConfig,
     pub memory: MemoryConfig,
     pub execution: ExecutionConfig,
+    pub telegram: Option<TelegramSecrets>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct SecretsConfig {
     pub llm: LlmSecrets,
     pub voice: Option<VoiceSecrets>,
+    pub telegram: Option<TelegramSecrets>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct VoiceSecrets {
     pub groq_api_key: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TelegramSecrets {
+    pub api_id: i32,
+    pub api_hash: String,
+    pub phone_number: String,
+    #[serde(default = "default_tg_session_path")]
+    pub session_path: String,
+}
+
+impl TelegramSecrets {
+    /// Basic validation: ensures required MTProto credentials are present and sane.
+    pub fn is_valid(&self) -> bool {
+        self.api_id > 0
+            && !self.api_hash.trim().is_empty()
+            && self.phone_number.trim().starts_with('+')
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -87,6 +107,10 @@ fn default_retry_initial_delay_ms() -> u64 {
     1000
 }
 
+fn default_tg_session_path() -> String {
+    String::from("./igris_tg.session")
+}
+
 pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string("./config.toml")?;
     let mut config: AppConfig = toml::from_str(&content)?;
@@ -95,6 +119,7 @@ pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::E
     let secrets: SecretsConfig = toml::from_str(&secrets_content)?;
 
     config.llm.api_key = Some(secrets.llm.api_key.clone());
+    config.telegram = secrets.telegram.clone();
 
     Ok((config, secrets))
 }

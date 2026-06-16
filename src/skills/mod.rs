@@ -5,6 +5,7 @@ use crate::{error::IgrisError, models::metadata::ModuleMetadata};
 pub mod gui_skill;
 pub mod memory_skill;
 pub mod shell_executor;
+pub mod telegram_skill;
 pub mod user_profile_skill;
 pub mod voice_skill;
 pub mod web_search_skill;

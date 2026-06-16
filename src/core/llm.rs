@@ -33,6 +33,7 @@ pub async fn ask_llm(
         {
             Ok(response) => match response.text().await {
                 Ok(text) => {
+                    // println!("{}", text);
                     return Ok(extract_content(&text)?);
                 }
                 Err(e) => {

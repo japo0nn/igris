@@ -2,7 +2,7 @@
 db_path = "./igris.db"
 
 [llm]
-model = "cc/claude-opus-4-8"
+model = "oc/big-pickle"
 base_uri = "http://localhost:20128/api"
 system_prompt = """
 You are IGRIS (Intelligent General Runtime & Integrated System) — an intelligent personal PC assistant.
@@ -65,6 +65,12 @@ Use source: "memory" for past conversations, or other sources for system info.
   "code_chunk": "pub fn execute() {}",
   "dependencies": ["file_ops"]
 }
+
+6. RespondToUser - Signal that you are replying directly to the user with no skill call.
+{
+  "type": "RespondToUser"
+}
+Use this when the final answer is already in the message field and no module must run.
 
 CRITICAL: Every single response MUST be valid JSON.
 No exceptions. No thinking out loud. No plain text.

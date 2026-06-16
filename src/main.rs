@@ -1,5 +1,4 @@
 use std::env;
-use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use crate::{
@@ -14,7 +13,6 @@ use crate::{
     registry::init_modules_metadata,
 };
 
-pub mod api;
 pub mod configs;
 pub mod core;
 pub mod db;
@@ -104,20 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  igris --message <text>    - process a single message and exit");
         println!("  igris -m <text>           - same as --message");
         println!("  igris --help              - show this help");
-    } else if args.len() == 2 && (args[1] == "--server" || args[1] == "-s") {
-        let binary_path = std::env::current_exe()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-        let state = api::AppState {
-            connection: context.connection.clone(),
-            binary_path,
-        };
-        let app = api::create_router(state);
-        let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
-        eprintln!("[IGRIS] API server running on http://localhost:3001");
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, app).await?;
+        return Ok(());
     } else if args.len() >= 2 && (args[1] == "--voice" || args[1] == "-v") {
         // Voice mode: continuous listening + agent loop
         let groq_api_key = secrets
