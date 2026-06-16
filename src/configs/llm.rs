@@ -1,4 +1,4 @@
-use serde::Deserialize;
+﻿use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {
@@ -57,8 +57,6 @@ pub struct LlmConfig {
     pub context_token_limit: usize,
     #[serde(default = "default_retention_days")]
     pub retention_days: i32,
-    #[serde(default = "default_max_tokens")]
-    pub max_tokens: u32,
     #[serde(default = "default_retry_max_retries")]
     pub retry_max_retries: u32,
     #[serde(default = "default_retry_initial_delay_ms")]
@@ -71,8 +69,6 @@ pub struct TopicLlmConfig {
     #[serde(default = "default_vision_model")]
     pub vision_model: String,
     pub system_prompt: String,
-    #[serde(default = "default_topic_max_tokens")]
-    pub max_tokens: u32,
 }
 
 fn default_context_limit() -> usize {
@@ -81,14 +77,6 @@ fn default_context_limit() -> usize {
 
 fn default_retention_days() -> i32 {
     7
-}
-
-fn default_max_tokens() -> u32 {
-    16000
-}
-
-fn default_topic_max_tokens() -> u32 {
-    1024
 }
 
 fn default_retry_max_retries() -> u32 {

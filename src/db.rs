@@ -1,9 +1,10 @@
-use chrono::{DateTime, FixedOffset, Local, NaiveDateTime};
+use chrono::Local;
 use rusqlite::{Connection, params};
 use uuid::Uuid;
 
 use crate::{
     configs::llm::AppConfig,
+    core::utils::parse_db_timestamp,
     error::IgrisError,
     memory::{Message, MessageTopic, Session},
     models::assistant::ActionResponse,
@@ -195,28 +196,6 @@ pub fn search_messages(
     Ok(messages)
 }
 
-fn parse_db_timestamp(value: &str) -> DateTime<Local> {
-    if let Ok(dt) = DateTime::<FixedOffset>::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f %:z") {
-        return dt.with_timezone(&Local);
-    }
-    if let Ok(dt) = DateTime::<FixedOffset>::parse_from_str(value, "%Y-%m-%d %H:%M:%S %:z") {
-        return dt.with_timezone(&Local);
-    }
-    if let Ok(naive) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-        match naive.and_local_timezone(Local) {
-            chrono::LocalResult::Single(dt) => return dt,
-            _ => return Local::now(),
-        };
-    }
-    if let Ok(naive) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f") {
-        match naive.and_local_timezone(Local) {
-            chrono::LocalResult::Single(dt) => return dt,
-            _ => return Local::now(),
-        };
-    }
-    Local::now()
-}
-
 pub fn get_session_context_with_limit(
     connection: &Connection,
     session_id: &str,
@@ -242,7 +221,7 @@ pub fn get_session_context_with_limit(
                 content: row.get(3)?,
                 action: row.get(4)?,
                 is_done: row.get::<_, i32>(5)? != 0,
-                timestamp: Local::now(),
+                timestamp: parse_db_timestamp(&row.get::<_, String>(6)?),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -305,7 +284,7 @@ pub fn get_context_paginated(
                 content: row.get(3)?,
                 action: row.get(4)?,
                 is_done: row.get::<_, i32>(5)? != 0,
-                timestamp: Local::now(),
+                timestamp: parse_db_timestamp(&row.get::<_, String>(6)?),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

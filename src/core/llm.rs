@@ -5,7 +5,6 @@ use crate::{configs::llm::AppConfig, error::IgrisError, models::assistant::Assis
 pub async fn ask_llm(
     messages: &Vec<AssistantMessage>,
     config: &AppConfig,
-    _max_tokens: u32,
 ) -> Result<String, IgrisError> {
     let max_retries = config.llm.retry_max_retries;
     let initial_delay = config.llm.retry_initial_delay_ms;
@@ -32,16 +31,17 @@ pub async fn ask_llm(
             .send()
             .await
         {
-            Ok(response) => {
-                match response.text().await {
-                    Ok(text) => {
-                        return Ok(extract_content(&text)?);
-                    }
-                    Err(e) => {
-                        last_error = Some(IgrisError::LlmUnavailable(format!("Response read failed: {}", e)));
-                    }
+            Ok(response) => match response.text().await {
+                Ok(text) => {
+                    return Ok(extract_content(&text)?);
                 }
-            }
+                Err(e) => {
+                    last_error = Some(IgrisError::LlmUnavailable(format!(
+                        "Response read failed: {}",
+                        e
+                    )));
+                }
+            },
             Err(e) => {
                 if e.is_timeout() {
                     last_error = Some(IgrisError::LlmTimeout(e.to_string()));
@@ -59,14 +59,12 @@ pub async fn ask_llm(
         }
     }
 
-    Err(last_error.unwrap_or(IgrisError::LlmUnavailable("All retries exhausted".to_string())))
+    Err(last_error.unwrap_or(IgrisError::LlmUnavailable(
+        "All retries exhausted".to_string(),
+    )))
 }
 
-pub async fn generate_topics(
-    message: String,
-    config: &AppConfig,
-    max_tokens: u32,
-) -> Result<String, IgrisError> {
+pub async fn generate_topics(message: String, config: &AppConfig) -> Result<String, IgrisError> {
     let client = reqwest::Client::new();
 
     let messages: Vec<AssistantMessage> = vec![
@@ -84,7 +82,6 @@ pub async fn generate_topics(
         "model": &config.topic_llm.model,
         "messages": messages,
         "stream": false,
-        "max_tokens": max_tokens,
         "thinking": {
             "type": "disabled"
         }
@@ -126,25 +123,23 @@ fn sanitize_json_strings(json: &str) -> String {
 
     while let Some(ch) = chars.next() {
         match ch {
-            '\\' if in_string => {
-                match chars.peek() {
-                    Some(&'"') | Some(&'\\') | Some(&'/') | Some(&'b') | Some(&'f')
-                    | Some(&'n') | Some(&'r') | Some(&'t') => {
-                        result.push('\\');
-                        result.push(chars.next().unwrap());
-                    }
-                    Some(&'u') => {
-                        result.push('\\');
-                        result.push(chars.next().unwrap());
-                        for _ in 0..4 {
-                            if let Some(c) = chars.next() {
-                                result.push(c);
-                            }
+            '\\' if in_string => match chars.peek() {
+                Some(&'"') | Some(&'\\') | Some(&'/') | Some(&'b') | Some(&'f') | Some(&'n')
+                | Some(&'r') | Some(&'t') => {
+                    result.push('\\');
+                    result.push(chars.next().unwrap());
+                }
+                Some(&'u') => {
+                    result.push('\\');
+                    result.push(chars.next().unwrap());
+                    for _ in 0..4 {
+                        if let Some(c) = chars.next() {
+                            result.push(c);
                         }
                     }
-                    _ => result.push_str("\\\\"),
                 }
-            }
+                _ => result.push_str("\\\\"),
+            },
             '"' => {
                 in_string = !in_string;
                 result.push('"');

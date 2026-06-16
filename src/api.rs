@@ -59,20 +59,22 @@ async fn history_handler(
     State(state): State<AppState>,
 ) -> Result<Json<HistoryResponse>, StatusCode> {
     let raw_messages = {
-        let connection = state.connection.lock().unwrap();
-        let mut stmt = connection.prepare(
-            "SELECT role, content, is_done FROM messages WHERE role != 'system' ORDER BY timestamp ASC"
-        ).unwrap();
-        stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, bool>(2)?,
-            ))
-        })
-        .unwrap()
-        .filter_map(|r| r.ok())
-        .collect::<Vec<_>>()
+        let connection = state.connection.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = connection
+            .prepare(
+                "SELECT role, content, is_done FROM messages WHERE role != 'system' ORDER BY timestamp ASC",
+            )
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, bool>(2)?,
+                ))
+            })
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
     };
 
     let history: Vec<HistoryMessage> = raw_messages
@@ -121,12 +123,18 @@ async fn chat_handler(
 
     let raw = String::from_utf8_lossy(&output.stdout).to_string();
 
-    // Parse JSON reply from output lines
+    // Extract the last JSON line carrying a non-empty "message" field.
+    // Scan from the end and stop at the first match instead of parsing
+    // every line into a Value and collecting them all.
     let reply = raw
         .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter_map(|v| v["message"].as_str().map(|s| s.to_string()))
-        .last()
+        .rev()
+        .find_map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .and_then(|v| v["message"].as_str().map(|s| s.to_string()))
+                .filter(|s| !s.is_empty())
+        })
         .unwrap_or_else(|| raw.trim().to_string());
 
     Ok(Json(ChatResponse { reply }))

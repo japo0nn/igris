@@ -2,36 +2,36 @@ use crate::skills::SkillError;
 use rustyline::error::ReadlineError;
 use std::fmt;
 
-/// Основные типы ошибок IGRIS
+/// Core error types of IGRIS
 #[derive(Debug, Clone)]
 pub enum IgrisError {
-    // LLM-связанные ошибки
+    // LLM-related errors
     LlmUnavailable(String),
     LlmTimeout(String),
     LlmInvalidResponse(String),
 
-    // Validator ошибки
+    // Validator errors
     ValidatorRejected(String, usize),
     ValidatorTestsFailed(String),
 
-    // Итерационные ошибки
+    // comment
     MaxIterationsExceeded(usize),
     MaxFixIterationsExceeded(usize),
 
-    // Sandbox ошибки
+    // Sandbox errors
     SandboxExecutionFailed(String),
     SandboxTimeout,
     SandboxResourceLimitExceeded,
 
-    // Chunk/Module ошибки
+    // Chunk/Module errors
     InvalidChunkSyntax(String, usize),
     ModuleCompilationFailed(String),
 
-    // Parallel execution ошибки
+    // Parallel execution errors
     SubtaskFailed(String, String),
     ParallelExecutionAborted(Vec<String>),
 
-    // Базовые ошибки
+    // comment
     ParseError(String),
     SkillNotFound(String),
     SkillError(String),

@@ -11,6 +11,7 @@ pub mod llm;
 pub mod markdown;
 pub mod spinner;
 pub mod task;
+pub mod utils;
 
 #[derive(Debug, Clone)]
 pub struct CoreContext {

@@ -4,313 +4,288 @@
 [![Rust](https://img.shields.io/badge/Rust-2024%20Edition-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Status](https://img.shields.io/badge/Status-Active%20Development-brightgreen?style=flat-square)]()
-[![Build](https://img.shields.io/badge/Build-Passing-success?style=flat-square)]()
 
-> **A modular, context-aware personal PC assistant written in Rust.**  
-> Persistent memory system meets flexible skill architecture for seamless multi-turn interactions via JSON-based messaging.
-
----
-
-## 🎯 What is IGRIS?
-
-IGRIS is your intelligent agent that:
-
-- 🧠 **Remembers everything** — SQLite-powered memory with 9 retrieval methods
-- 👁️ **Sees your screen** — Vision AI + GUI automation (screenshot, click, keyboard)
-- ⚡ **Executes smartly** — Multi-step actions with streaming context
-- 🔄 **Stays in sync** — Automatic session restoration on restart
-- 📝 **Speaks JSON** — Pure JSON-based communication protocol
-- 🛠️ **Extends easily** — Modular skill architecture for custom extensions
-- 🌐 **Has a Web UI** — React frontend + REST API server mode
-- 🔧 **Configurable** — max_tokens, context limits, vision models via config.toml
+> A modular, context-aware personal PC assistant written in Rust.
+> Persistent memory meets a flexible skill architecture for seamless multi-turn interactions via a JSON-based protocol.
 
 ---
 
-## ✨ Key Features
+## What is IGRIS?
 
-### 🧠 Memory Skill — Comprehensive Knowledge Base
+IGRIS is an intelligent agent that:
 
-All conversations persist in SQLite. Query and retrieve with surgical precision:
+- Remembers everything - SQLite-powered memory with 9 retrieval methods
+- Sees your screen - Vision AI + GUI automation (screenshot, click, keyboard)
+- Searches the web - DuckDuckGo with SearXNG fallback
+- Speaks and listens - TTS output and continuous voice input (Whisper)
+- Executes smartly - Multi-step actions with streaming context
+- Stays in sync - Automatic session restoration on restart
+- Speaks JSON - Pure JSON-based communication protocol
+- Extends easily - Modular skill architecture
+- Has a Web UI - React frontend + REST API server mode
+
+---
+
+## Skills
+
+IGRIS ships with six built-in skills:
+
+### 1. Memory - Persistent Knowledge Base
+
+All conversations persist in SQLite. Retrieve with precision:
 
 | Method | Description | Arguments |
-|--------|-------------|----------|
-| `by-topics` | Retrieve messages by topic tags | Space-separated topics (e.g. `birthday greeting`) |
-| `get-sessions` | List all sessions with IDs and timestamps | (empty) |
-| `get-messages-by-time-range` | Messages within a time window | `start\|end` timestamps |
-| `get-messages-paginated` | Browse messages page-by-page | `page size` (e.g. `1 10`) |
-| `get-messages-by-session` | All messages from one session | Session UUID |
-| `get-topics` | Discover all stored topic tags | (empty) |
-| `search-messages` | Full-text keyword search | Keyword or phrase |
-| `get-message-by-id` | Fetch specific message by UUID | Message UUID |
-| `get-sessions-by-date` | Sessions within date range | `start\|end` timestamps |
+|--------|-------------|-----------|
+| by-topics | Retrieve messages by topic tags | Space-separated topics |
+| get-sessions | List all sessions | (empty) |
+| get-messages-by-time-range | Messages within a time window | start|end |
+| get-messages-paginated | Browse page-by-page | page size |
+| get-messages-by-session | All messages from one session | Session UUID |
+| get-topics | Discover all topic tags | (empty) |
+| search-messages | Keyword search (limited to 50) | Keyword |
+| get-message-by-id | Fetch one message | Message UUID |
+| get-sessions-by-date | Sessions within a date range | start|end |
 
-### ⚙️ Shell Executor — Safe Command Runner
+### 2. ShellExecutor - Command Runner
 
-Execute shell commands with proper error handling:
+Runs shell commands with exit-code validation. PowerShell on Windows, sh on Unix.
 
-```bash
-execute_command "ls -la /tmp"
-```
-
-✅ Exit code validation (not stderr guessing)  
-✅ Cross-platform (macOS, Linux, Windows)  
-✅ Proper error messages with exit status  
-
-### 🖱️ GUI Skill — Screen Automation
-
-Control your desktop with vision AI:
+### 3. GuiSkill - Screen Automation
 
 | Method | Description | Arguments |
-|--------|-------------|----------|
-| `screenshot` | Capture the current screen | (empty) |
-| `analyze_screen` | Analyze screenshot with vision AI | Question/instruction |
-| `click` | Left-click at pixel coordinates | `X Y` |
-| `move_mouse` | Move cursor to coordinates | `X Y` |
-| `type_text` | Type text at current focus | Text to type |
-| `scroll` | Scroll vertically | `up/down N` |
-| `key_press` | Press keys or combinations | `enter`, `cmd+c`, `ctrl+t`, etc. |
-| `open_url` | Open URL in default browser | Full URL |
+|--------|-------------|-----------|
+| screenshot | Capture the screen | (empty) |
+| analyze_screen | Analyze with vision AI | Question |
+| click | Left-click at coordinates | X Y |
+| move_mouse | Move cursor | X Y |
+| type_text | Type text | Text |
+| scroll | Scroll vertically | up/down N |
+| key_press | Press keys/combos | enter, ctrl+c, ... |
+| open_url | Open URL in browser | Full URL |
 
-✅ Cross-platform (macOS, Linux, Windows)  
-✅ Vision AI via configurable model (`vision_model` in config)  
-✅ Screenshots saved to `/tmp/igris_screen.png`  
+Screenshots are saved to the OS temp directory (cross-platform via std::env::temp_dir()).
 
-### 🔄 Agent Loop — Intelligent Processing
+### 4. WebSearchSkill - Internet Access
 
-- Multi-step skill execution with result chaining
-- Auto-logging of all intermediate messages to database
-- Non-blocking execution (`block_in_place` for sync skills in async runtime)
-- `is_done` flag tracking for completion status
+| Method | Description | Arguments |
+|--------|-------------|-----------|
+| search_web | DuckDuckGo + SearXNG fallback | Query |
+| read_page | Extract readable text from a URL | Full URL |
 
-### 💾 Session Restore — Context Preservation
+### 5. UserProfileSkill - Persistent Preferences
 
-- Automatically loads last **non-empty** session on startup
-- Maintains full conversation context between restarts
-- Skips empty sessions — always finds the last meaningful one
+| Method | Description | Arguments |
+|--------|-------------|-----------|
+| get-profile | Return the full profile as JSON | (empty) |
+| update-preference | Save a key-value preference | key|value |
+| add-topic | Add a topic of interest | Topic name |
 
-### 🌐 Web UI + REST API
+Profile is stored at ~/.igris/user_profile.json and persists across runs.
 
-Run IGRIS with a browser interface:
+### 6. Voice - Text-to-Speech
 
-```bash
-./start-ui.sh
-```
+| Method | Description | Arguments |
+|--------|-------------|-----------|
+| speak | Speak text aloud | Text |
 
-- **React frontend** at `http://localhost:5173`
-- **axum backend** at `http://localhost:3001`
-- `GET /api/history` — fetch conversation history
-- `POST /api/chat` — send messages via HTTP
-
-### 📊 Context Token Management
-
-Automatic context window management:
-
-- `context_token_limit` — max tokens before trimming old messages
-- `retention_days` — how many days of messages to keep
-- Auto-trims stale messages when limit is exceeded
-- Configurable per LLM provider
-
-### 🔧 Supervisor
-
-Lifecycle event logging:
-
-- Logs `[STARTUP]` and `[SHUTDOWN]` events to file
-- Independent from Memory Layer (no DB dependency)
-- Crash-safe logging
+Uses macOS say, Linux espeak/spd-say, or Windows PowerShell SAPI.
 
 ---
 
-## 🚀 Usage Modes
+## Usage Modes
 
 ```bash
 # Interactive terminal mode (default)
 igris
 
-# Single message mode — process and exit
-igris --message "What files are in my Desktop?"
+# Single message - process and exit
+igris --message "What files are on my Desktop?"
 igris -m "Show me the weather"
 
-# REST API server mode
+# REST API server mode (http://localhost:3001)
 igris --server
 igris -s
 
-# Full Web UI (backend + frontend)
+# Continuous voice mode (microphone -> Whisper -> agent -> TTS)
+igris --voice
+igris -v
+
+# Full Web UI (backend + React frontend)
 ./start-ui.sh
 
 # Help
 igris --help
 ```
 
----
-
-## 🏗️ Architecture
-
-```
-IGRIS/
-├── src/
-│   ├── core/
-│   │   ├── agent.rs          # Agent Loop orchestration
-│   │   ├── chat.rs           # Chat Loopback (interactive mode)
-│   │   ├── llm.rs            # LLM integration (ask_llm, generate_topics)
-│   │   ├── task.rs           # Task/message building
-│   │   └── mod.rs
-│   ├── skills/
-│   │   ├── memory_skill.rs    # SQLite-backed memory (9 methods)
-│   │   ├── shell_executor.rs  # Safe shell commands
-│   │   ├── gui_skill.rs       # GUI automation + vision AI
-│   │   └── mod.rs
-│   ├── memory/
-│   │   └── mod.rs            # Session & message models
-│   ├── models/
-│   │   ├── assistant.rs       # ActionResponse, AssistantMessage, etc.
-│   │   ├── metadata.rs        # ModuleMetadata
-│   │   └── mod.rs
-│   ├── configs/
-│   │   ├── llm.rs            # AppConfig, LlmConfig, TopicLlmConfig
-│   │   └── mod.rs
-│   ├── api.rs                # REST API routes (axum)
-│   ├── db.rs                 # SQLite operations + context management
-│   ├── error.rs              # IgrisError types
-│   ├── registry.rs           # Skill registration
-│   ├── supervisor.rs         # Lifecycle event logging
-│   └── main.rs               # Entry point + CLI flags
-├── ui/                       # React frontend (Vite)
-├── start-ui.sh               # Launch backend + frontend
-├── config.toml               # Main configuration
-├── secret.toml               # API keys (git-ignored)
-├── Cargo.toml                # Dependencies
-└── README.md
-```
+Interactive mode supports slash commands: /help, /clear, /history, /edit, /exit.
 
 ---
 
-## ⚙️ Configuration
+## Architecture
 
-IGRIS comes with a pre-configured `config.toml`. You don't need to modify it to get started.
+```
+igris/
+|-- src/
+|   |-- core/
+|   |   |-- agent.rs       # Agent loop orchestration
+|   |   |-- chat.rs        # Interactive REPL (rustyline)
+|   |   |-- llm.rs         # LLM calls (ask_llm, generate_topics)
+|   |   |-- task.rs        # Task object building + topic saving
+|   |   |-- markdown.rs    # Terminal markdown renderer
+|   |   |-- spinner.rs     # Async progress spinner
+|   |   |-- utils.rs       # Shared helpers (parse_db_timestamp, speak_text)
+|   |   +-- mod.rs         # CoreContext
+|   |-- skills/
+|   |   |-- memory_skill.rs        # SQLite memory (9 methods)
+|   |   |-- shell_executor.rs      # Shell commands
+|   |   |-- gui_skill.rs           # GUI + vision AI
+|   |   |-- web_search_skill.rs    # DuckDuckGo / SearXNG
+|   |   |-- user_profile_skill.rs  # Persistent profile
+|   |   |-- voice_skill.rs         # TTS
+|   |   +-- mod.rs                 # SkillModule trait + helpers
+|   |-- voice/
+|   |   |-- continuous.rs   # Mic capture + Whisper transcription
+|   |   +-- mod.rs
+|   |-- memory/mod.rs      # Session & Message models
+|   |-- models/            # ActionResponse, metadata, etc.
+|   |-- configs/llm.rs     # AppConfig / SecretsConfig
+|   |-- api.rs             # REST API (axum)
+|   |-- db.rs              # SQLite operations
+|   |-- error.rs           # IgrisError
+|   |-- registry.rs        # Skill registration
+|   |-- supervisor.rs      # Lifecycle logging + backups
+|   +-- main.rs            # Entry point + CLI flags
+|-- ui/                   # React frontend (Vite)
+|-- start-ui.sh           # Launch backend + frontend
+|-- config.toml           # Main configuration
+|-- secrets.toml          # API keys (git-ignored)
+|-- Cargo.toml
++-- README.md
+```
 
-> **Note:** IGRIS uses **OmniRoute** for LLM routing capabilities. OmniRoute is an open-source local LLM proxy — see [github.com/diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute) for setup instructions.
+---
 
-### Setup: Create `secret.toml`
+## Configuration
 
-**⚠️ IMPORTANT:** This file contains API keys and is **git-ignored**. Create it manually in the project root:
+IGRIS reads config.toml (committed) and secrets.toml (git-ignored) from the project root.
+
+> IGRIS talks to an OpenAI-compatible endpoint via base_uri. Point it at your local LLM proxy or any compatible gateway.
+
+### secrets.toml
+
+Create this file manually in the project root. Never commit it.
 
 ```toml
 [llm]
-api_key = "your-omniroute-api-key-here"
+api_key = "your-api-key-here"
+
+# Optional - only needed for --voice mode
+[voice]
+groq_api_key = "your-groq-key-here"
 ```
 
-**Never commit `secret.toml` to version control!**
-
-### Full `config.toml` reference
+### config.toml reference
 
 ```toml
 [memory]
 db_path = "./igris.db"
 
 [llm]
-model = "cc/claude-sonnet-4-6"
+model = "cc/claude-opus-4-8"
 vision_model = "cc/claude-sonnet-4-6"
 base_uri = "http://localhost:20128/api"
-system_prompt = "..."       # IGRIS system instructions
-context_token_limit = 128000 # Max tokens before trimming history
-retention_days = 7           # Days to keep messages when trimming
-max_tokens = 16000           # Max tokens per LLM response
+system_prompt = "..."            # IGRIS system instructions
+context_token_limit = 128000    # Tokens before trimming history
+retention_days = 7              # Days to keep when trimming
+retry_max_retries = 3           # LLM retry attempts
+retry_initial_delay_ms = 1000   # Backoff base delay
 
 [topic_llm]
-model = "cc/claude-haiku-4-5-20251001"
+model = "kr/claude-haiku-4.5"
 vision_model = "cc/claude-sonnet-4-6"
-system_prompt = "..."       # Topic extraction prompt
-max_tokens = 1024           # Max tokens for topic extraction
+system_prompt = "..."            # Topic extraction prompt
+
+[execution]
+iteration_limit = 10            # Max agent iterations
+fix_iteration_limit = 5         # Max self-correction attempts
 ```
 
 ---
 
-## 📦 Dependencies
+## Dependencies
 
 | Crate | Purpose |
-|-------|----------|
-| `tokio` | Async runtime |
-| `serde_json` | JSON parsing |
-| `rusqlite` | SQLite driver |
-| `uuid` | Unique identifiers |
-| `chrono` | DateTime handling |
-| `reqwest` | HTTP client for LLM |
-| `axum` | REST API server |
-| `enigo` | Cross-platform mouse/keyboard |
-| `xcap` | Cross-platform screen capture |
+|-------|---------|
+| tokio | Async runtime |
+| serde / serde_json | Serialization |
+| toml | Config parsing |
+| rusqlite (bundled) | SQLite driver |
+| uuid | Unique identifiers |
+| chrono | DateTime handling |
+| reqwest | HTTP client (LLM, web) |
+| scraper | HTML parsing for web search |
+| axum / tower-http | REST API server + CORS |
+| rustyline | Interactive line editor |
+| enigo | Cross-platform mouse/keyboard |
+| screenshots | Cross-platform screen capture |
+| cpal / webrtc-vad / nnnoiseless | Voice capture + VAD + denoise |
+| dirs | Platform directories |
+| base64 | Image encoding for vision |
 
 ---
 
-## 🔄 Processing Loop
+## Processing Loop
 
-1. Receive user message (via CLI, `--message`, or REST API)
-2. Build Task Object with skills context, system info, all topics
-3. Send to LLM → receive JSON response
-4. If `is_done: false` → execute skill actions
-5. Feed skill results back to LLM → repeat
-6. When `is_done: true` → return final response
-7. All messages (including intermediate) auto-saved to SQLite
+1. Receive a user message (CLI, --message, voice, or REST API)
+2. Build a task object with skills context, system info, and known topics
+3. Send to the LLM and receive a JSON response
+4. If is_done is false, execute the requested skill actions
+5. Feed the results back to the LLM and repeat
+6. When is_done is true, return the final response
+7. All messages (including intermediate steps) are saved to SQLite
+
+Iteration and fix-iteration limits are enforced from the [execution] config.
 
 ---
 
-## 🧪 Development
+## Development
 
 ```bash
-# Build
-cargo build
-cargo build --release
-
-# Run tests
-cargo test
-
-# Lint
-cargo clippy
-
-# Format
-cargo fmt
-
-# Build docs
-cargo doc --open
+cargo build              # Debug build
+cargo build --release    # Optimized build
+cargo check              # Fast type-check
+cargo test               # Run tests
+cargo clippy             # Lint
+cargo fmt                # Format
 ```
 
 ---
 
-## 🎯 Roadmap
+## Roadmap
 
-- [x] ✅ Memory Skill with 9 retrieval methods
-- [x] ✅ Shell Executor (cross-platform, exit code validation)
-- [x] ✅ Agent Loop with intermediate message logging
-- [x] ✅ Session restore on startup
-- [x] ✅ GUI Skill (screenshot, click, keyboard, vision AI)
-- [x] ✅ Web UI + REST API server mode
-- [x] ✅ CLI flags (`--message`, `--server`, `--help`)
-- [x] ✅ Supervisor lifecycle logging
-- [x] ✅ Context token limit management
-- [x] ✅ Configurable max_tokens per LLM
-- [x] ✅ Separate config.toml / secret.toml
-- [ ] 🔜 Comprehensive unit tests for all skills
-- [ ] 🔜 Full-text search (FTS5) optimization
-- [ ] 🔜 Voice input (STT via Whisper/Groq)
-- [ ] 🔜 Docker containerization
-- [ ] 🔜 Multiple LLM provider support
-- [ ] 🔜 Self-improvement engine (dynamic module generation)
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-skill`)
-3. Commit changes (`git commit -am 'Add amazing skill'`)
-4. Push to branch (`git push origin feature/amazing-skill`)
-5. Open a Pull Request
+- [x] Memory skill with 9 retrieval methods
+- [x] ShellExecutor (cross-platform, exit-code validation)
+- [x] Agent loop with intermediate logging + self-correction
+- [x] Session restore on startup
+- [x] GuiSkill (screenshot, click, keyboard, vision AI)
+- [x] WebSearchSkill (DuckDuckGo + SearXNG)
+- [x] UserProfileSkill (persistent JSON profile)
+- [x] Voice output (TTS) + continuous voice input (Whisper)
+- [x] Web UI + REST API server mode
+- [x] CLI flags (--message, --server, --voice, --help)
+- [x] Supervisor lifecycle logging + backups
+- [x] Context token management + retention trimming
+- [ ] Comprehensive unit tests for all skills
+- [ ] Full-text search (FTS5) optimization
+- [ ] Persistent in-process API session (avoid per-request subprocess)
+- [ ] Self-improvement engine (dynamic module generation)
 
 ---
 
-## 📄 License
+## License
 
-MIT License — see LICENSE file for details
+MIT License - see the LICENSE file for details.
 
 ---
 
-**Made with ❤️ and Rust**
+Made with Rust.

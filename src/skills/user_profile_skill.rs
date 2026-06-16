@@ -8,7 +8,7 @@ use crate::skills::{MethodInfo, SkillError, SkillModule, SkillOutput};
 pub struct UserProfileSkill {
     pub metadata: ModuleMetadata,
     profile_path: PathBuf,
-    pub profile: Profile,
+    pub profile: std::sync::Mutex<Profile>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -78,7 +78,7 @@ impl UserProfileSkill {
                 author: None,
             },
             profile_path,
-            profile,
+            profile: std::sync::Mutex::new(profile),
         }
     }
 
@@ -88,21 +88,36 @@ impl UserProfileSkill {
                 SkillError::ExecutionFailed(format!("Failed to create profile dir: {}", e))
             })?;
         }
-        let json = serde_json::to_string_pretty(&self.profile)
+        let profile = self.profile.lock().unwrap_or_else(|e| e.into_inner());
+        let json = serde_json::to_string_pretty(&*profile)
             .map_err(|e| SkillError::ExecutionFailed(format!("Serialization error: {}", e)))?;
         fs::write(&self.profile_path, json)
             .map_err(|e| SkillError::ExecutionFailed(format!("Failed to write profile: {}", e)))?;
         Ok(())
     }
 
-    pub fn update_preference(&mut self, key: &str, value: &str) -> Result<(), SkillError> {
-        self.profile
-            .preferences
-            .insert(key.to_string(), value.to_string());
-        self.profile.last_updated = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs().to_string())
-            .unwrap_or_default();
+    pub fn update_preference(&self, key: &str, value: &str) -> Result<(), SkillError> {
+        {
+            let mut profile = self.profile.lock().unwrap_or_else(|e| e.into_inner());
+            profile
+                .preferences
+                .insert(key.to_string(), value.to_string());
+            profile.last_updated = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs().to_string())
+                .unwrap_or_default();
+        }
+        self.save()
+    }
+
+    pub fn add_topic(&self, topic: &str) -> Result<(), SkillError> {
+        {
+            let mut profile = self.profile.lock().unwrap_or_else(|e| e.into_inner());
+            let t = topic.trim().to_string();
+            if !t.is_empty() && !profile.favorite_topics.contains(&t) {
+                profile.favorite_topics.push(t);
+            }
+        }
         self.save()
     }
 }
@@ -140,16 +155,30 @@ impl SkillModule for UserProfileSkill {
     fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         match method {
             "get-profile" => {
-                let json = serde_json::to_value(&self.profile).map_err(|e| {
+                let profile = self.profile.lock().unwrap_or_else(|e| e.into_inner());
+                let json = serde_json::to_value(&*profile).map_err(|e| {
                     SkillError::ExecutionFailed(format!("Serialization error: {}", e))
                 })?;
                 Ok(SkillOutput::Json(json))
             }
-            "update-preference" => Ok(SkillOutput::Text(format!(
-                "Preference update requested: {}",
-                args
-            ))),
-            "add-topic" => Ok(SkillOutput::Text(format!("Topic add requested: {}", args))),
+            "update-preference" => {
+                let parts: Vec<&str> = args.splitn(2, '|').collect();
+                if parts.len() != 2 {
+                    return Err(SkillError::InvalidArgs(
+                        "Usage: <key>|<value>. Example: music_genre|jazz".to_string(),
+                    ));
+                }
+                self.update_preference(parts[0].trim(), parts[1].trim())?;
+                Ok(SkillOutput::Text(format!(
+                    "Preference saved: {} = {}",
+                    parts[0].trim(),
+                    parts[1].trim()
+                )))
+            }
+            "add-topic" => {
+                self.add_topic(args)?;
+                Ok(SkillOutput::Text(format!("Topic added: {}", args.trim())))
+            }
             _ => Err(SkillError::NotFound(method.to_string())),
         }
     }

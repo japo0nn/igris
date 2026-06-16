@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SystemInfo {
@@ -18,8 +18,6 @@ pub struct Constraints {
     pub max_iterations: u32,
     #[serde(default = "default_max_fix_iterations")]
     pub max_fix_iterations: u32,
-    #[serde(default = "default_max_tokens")]
-    pub max_tokens: u32,
 }
 
 fn default_max_iterations() -> u32 {
@@ -27,9 +25,6 @@ fn default_max_iterations() -> u32 {
 }
 fn default_max_fix_iterations() -> u32 {
     5
-}
-fn default_max_tokens() -> u32 {
-    16000
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

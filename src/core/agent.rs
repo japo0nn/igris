@@ -20,13 +20,12 @@ pub async fn execute_agent_loop(
     session: &Session,
 ) -> Result<(), IgrisError> {
     let token_limit = context.config.llm.context_token_limit;
-    let max_tokens = context.config.llm.max_tokens;
 
     let mut iteration: u32 = 0;
     let mut fix_iteration: u32 = 0;
 
     context.spinner.start("Thinking...".to_string()).await;
-    let mut content = match ask_llm(&messages, &context.config, max_tokens).await {
+    let mut content = match ask_llm(&messages, &context.config).await {
         Ok(c) => c,
         Err(e @ IgrisError::LlmUnavailable(_)) | Err(e @ IgrisError::LlmTimeout(_)) => {
             context
@@ -89,7 +88,10 @@ pub async fn execute_agent_loop(
 
         if let Some(ref constraints) = response.constraints {
             if iteration >= constraints.max_iterations {
-                response.message = format!("Max iterations exceeded ({}). Please refine your request or start over.", constraints.max_iterations);
+                response.message = format!(
+                    "Max iterations exceeded ({}). Please refine your request or start over.",
+                    constraints.max_iterations
+                );
                 response.is_done = true;
                 response.actions = vec![];
             }
@@ -350,13 +352,8 @@ pub async fn execute_agent_loop(
                         fix_iteration,
                         constraints: None,
                     };
-                    spawn_save_message(
-                        context,
-                        "assistant".to_string(),
-                        &final_response,
-                        session,
-                    )
-                    .await?;
+                    spawn_save_message(context, "assistant".to_string(), &final_response, session)
+                        .await?;
                     break 'outer;
                 }
 
@@ -381,19 +378,19 @@ pub async fn execute_agent_loop(
                 });
 
                 let estimated_tokens = db::estimate_context_tokens(
-                    &context.connection.lock().unwrap(),
+                    &context.connection.lock().unwrap_or_else(|e| e.into_inner()),
                     &session.id.to_string(),
                 )
                 .unwrap_or(0);
                 if estimated_tokens > token_limit {
                     let _ = db::trim_old_messages(
-                        &context.connection.lock().unwrap(),
+                        &context.connection.lock().unwrap_or_else(|e| e.into_inner()),
                         &session.id.to_string(),
                         context.config.llm.retention_days,
                     );
                 }
 
-                ask_llm(messages, &context.config, max_tokens).await?
+                ask_llm(messages, &context.config).await?
             };
 
             response = loop {
@@ -404,14 +401,23 @@ pub async fn execute_agent_loop(
                         if let Some(ref constraints) = value.constraints {
                             if iteration >= constraints.max_iterations {
                                 let done = ActionResponse {
-                                    message: format!("Max iterations exceeded ({}).", constraints.max_iterations),
+                                    message: format!(
+                                        "Max iterations exceeded ({}).",
+                                        constraints.max_iterations
+                                    ),
                                     is_done: true,
                                     actions: vec![],
                                     iteration,
                                     fix_iteration,
                                     constraints: None,
                                 };
-                                spawn_save_message(context, "assistant".to_string(), &done, session).await?;
+                                spawn_save_message(
+                                    context,
+                                    "assistant".to_string(),
+                                    &done,
+                                    session,
+                                )
+                                .await?;
                                 break 'outer;
                             }
                         }
@@ -553,7 +559,7 @@ fn request_memory_data(
 ) -> Result<String, IgrisError> {
     use crate::db::{get_topics, search_messages};
 
-    let connection = context.connection.lock().unwrap();
+    let connection = context.connection.lock().unwrap_or_else(|e| e.into_inner());
     let mut results = String::new();
 
     // Search by topics
@@ -672,8 +678,7 @@ async fn handle_error(
         content: serde_json::json!(&task_object).to_string(),
     });
 
-    let max_tokens = context.config.llm.max_tokens;
-    let new_content = ask_llm(messages, &context.config, max_tokens).await?;
+    let new_content = ask_llm(messages, &context.config).await?;
 
     Ok(new_content)
 }

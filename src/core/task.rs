@@ -38,12 +38,11 @@ pub fn build_task_object(
         },
         system_response: system_response,
         skills: build_skills_context(skills)?,
-        all_topics: get_topics(&context.connection.lock().unwrap())?,
+        all_topics: get_topics(&context.connection.lock().unwrap_or_else(|e| e.into_inner()))?,
         capabilities,
         constraints: Constraints {
             max_iterations: 10,
             max_fix_iterations: 5,
-            max_tokens: context.config.llm.max_tokens,
         },
     };
 
@@ -94,13 +93,14 @@ async fn save_message_with_topics(
     session: &Session,
 ) -> Result<(), IgrisError> {
     let message_id = insert_message(
-        &context.connection.lock().unwrap(),
+        &context.connection.lock().unwrap_or_else(|e| e.into_inner()),
         role,
         &message,
         &session,
     )?;
 
-    let existing_topics = get_topics(&context.connection.lock().unwrap())?;
+    let existing_topics =
+        get_topics(&context.connection.lock().unwrap_or_else(|e| e.into_inner()))?;
 
     let topic_request = TopicRequest {
         message: message.message.clone(),
@@ -109,13 +109,12 @@ async fn save_message_with_topics(
 
     let topic_json = serde_json::json!(topic_request).to_string();
 
-    let max_tokens = context.config.topic_llm.max_tokens;
-    let content = generate_topics(topic_json, &context.config, max_tokens).await?;
+    let content = generate_topics(topic_json, &context.config).await?;
 
     let generated_topics: Vec<String> = serde_json::from_str(&content).unwrap_or_default();
 
     insert_topic(
-        &context.connection.lock().unwrap(),
+        &context.connection.lock().unwrap_or_else(|e| e.into_inner()),
         generated_topics,
         message_id,
     )?;

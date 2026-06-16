@@ -32,7 +32,7 @@ impl Spinner {
     pub async fn start(&self, initial_message: String) {
         self.running.store(true, Ordering::SeqCst);
         {
-            let mut msg = self.message.lock().unwrap();
+            let mut msg = self.message.lock().unwrap_or_else(|e| e.into_inner());
             *msg = initial_message.clone();
         }
 
@@ -43,7 +43,9 @@ impl Spinner {
         tokio::spawn(async move {
             if !is_tty {
                 // Не TTY: напечатать один раз и ждать
-                eprintln!("\x1b[2m… {}\x1b[0m", { message.lock().unwrap().clone() });
+                eprintln!("\x1b[2m… {}\x1b[0m", {
+                    message.lock().unwrap_or_else(|e| e.into_inner()).clone()
+                });
                 while running.load(Ordering::SeqCst) {
                     tokio::time::sleep(Duration::from_millis(200)).await;
                 }
@@ -54,7 +56,7 @@ impl Spinner {
             let mut idx = 0usize;
             while running.load(Ordering::SeqCst) {
                 let frame = SPINNER_FRAMES[idx % SPINNER_FRAMES.len()];
-                let msg = { message.lock().unwrap().clone() };
+                let msg = { message.lock().unwrap_or_else(|e| e.into_inner()).clone() };
                 // \r — вернуться в начало строки, \x1b[K — стереть до конца
                 eprint!("\r\x1b[K\x1b[36m{}\x1b[0m \x1b[1m{}\x1b[0m", frame, msg);
                 let _ = std::io::stderr().flush();
@@ -69,7 +71,7 @@ impl Spinner {
 
     /// Обновить сообщение спиннера на лету.
     pub fn set_message(&self, msg: String) {
-        *self.message.lock().unwrap() = msg;
+        *self.message.lock().unwrap_or_else(|e| e.into_inner()) = msg;
     }
 
     /// Вывести строку прогресса (лог тулзы/экшена).
@@ -94,11 +96,17 @@ impl Spinner {
 
     /// Сохранить полный вывод последней команды (для /output).
     pub fn set_last_full_output(&self, output: String) {
-        *self.last_full_output.lock().unwrap() = output;
+        *self
+            .last_full_output
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = output;
     }
 
     pub fn get_last_full_output(&self) -> String {
-        self.last_full_output.lock().unwrap().clone()
+        self.last_full_output
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Начало нового раунда — здесь больше ничего не нужно:

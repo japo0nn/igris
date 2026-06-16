@@ -29,7 +29,7 @@ pub mod voice;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let name = "IGRIS";
-    let version = "v0.1.0";
+    let version = "0.1.0";
     let status = "Active";
 
     println!("{name} {version}\nStatus: {status}");
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let skills = init_modules_metadata(&context)?;
-    let session = create_session(&context.connection.lock().unwrap())?;
+    let session = create_session(&context.connection.lock().unwrap_or_else(|e| e.into_inner()))?;
 
     let initial_history = load_previous_session_history(&context);
     if !initial_history.is_empty() {
@@ -185,31 +185,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Cross-platform TTS: macOS (say), Linux (espeak/spd-say), Windows (PowerShell SAPI)
+/// Cross-platform TTS wrapper around core::utils::speak_text.
 fn speak_text(text: &str) {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("say").arg(text).status();
-    }
-    #[cfg(target_os = "linux")]
-    {
-        if std::process::Command::new("espeak").arg(text).status().is_ok() {}
-        else { let _ = std::process::Command::new("spd-say").arg(text).status(); }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let ps = format!(
-            "Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.SpeakAsync('{}'); $s.Dispose()",
-            text.replace("'", "''")
-        );
-        let _ = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &ps])
-            .status();
-    }
+    let _ = crate::core::utils::speak_text(text);
 }
 
 fn load_previous_session_history(context: &CoreContext) -> Vec<AssistantMessage> {
-    let connection = context.connection.lock().unwrap();
+    let connection = context.connection.lock().unwrap_or_else(|e| e.into_inner());
     match get_last_session_with_messages(&connection) {
         Ok(Some(last_session)) => match get_messages_by_session(&connection, &last_session.id) {
             Ok(messages) => messages

@@ -170,7 +170,7 @@ impl Supervisor {
 
         #[cfg(not(unix))]
         {
-            let child = Command::new(binary)
+            let _child = Command::new(binary)
                 .args(&args[1..])
                 .spawn()
                 .map_err(|e| format!("Failed to spawn new process: {}", e))?;
@@ -189,8 +189,11 @@ impl Supervisor {
     }
 
     fn cleanup_old_backups(&self, keep_count: usize) {
-        let mut entries: Vec<_> = fs::read_dir(&self.backups_dir)
-            .unwrap_or_else(|_| panic!("Cannot read backups dir {}", self.backups_dir.display()))
+        let read_dir = match fs::read_dir(&self.backups_dir) {
+            Ok(rd) => rd,
+            Err(_) => return,
+        };
+        let mut entries: Vec<_> = read_dir
             .filter_map(|e| e.ok())
             .filter(|e| {
                 e.path()
@@ -210,8 +213,11 @@ impl Supervisor {
     }
 
     pub fn get_backups(&self) -> Vec<String> {
-        let mut backups: Vec<String> = fs::read_dir(&self.backups_dir)
-            .unwrap_or_else(|_| panic!("Cannot read backups dir {}", self.backups_dir.display()))
+        let read_dir = match fs::read_dir(&self.backups_dir) {
+            Ok(rd) => rd,
+            Err(_) => return Vec::new(),
+        };
+        let mut backups: Vec<String> = read_dir
             .filter_map(|e| e.ok())
             .filter(|e| {
                 e.path()

@@ -40,7 +40,11 @@ impl SkillModule for MemorySkill {
     }
 
     fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
-        let connection = &self.context.connection.lock().unwrap();
+        let connection = &self
+            .context
+            .connection
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         match method {
             "by-topics" => self.by_topics(args, connection),
             "get-sessions" => self.get_sessions(connection),
@@ -334,7 +338,8 @@ impl MemorySkill {
         let mut stmt = connection.prepare(
             "SELECT id, session_id, role, content, timestamp, action, is_done FROM messages
              WHERE content LIKE ?1
-             ORDER BY timestamp DESC",
+             ORDER BY timestamp DESC
+             LIMIT 50",
         )?;
 
         let messages = stmt

@@ -1,4 +1,4 @@
-﻿use std::process::Command;
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
@@ -111,12 +111,10 @@ impl SkillModule for GuiSkill {
 
 impl GuiSkill {
     fn analyze_screen(&self, question: &str) -> Result<SkillOutput, SkillError> {
-        #[cfg(target_os = "windows")]
-        let path = "C:\\Users\\sosa\\AppData\\Local\\Temp\\igris_screen.png";
-
-        #[cfg(not(target_os = "windows"))]
-        let path = std::env::temp_dir().join("igris_screen.png").to_string_lossy().to_string();
-
+        let path = std::env::temp_dir()
+            .join("igris_screen.png")
+            .to_string_lossy()
+            .to_string();
 
         let img_bytes = std::fs::read(&path).map_err(|_| {
             SkillError::ExecutionFailed(
@@ -189,11 +187,10 @@ impl GuiSkill {
 }
 
 fn take_screenshot() -> Result<SkillOutput, SkillError> {
-    #[cfg(target_os = "windows")]
-    let path = "C:\\Users\\sosa\\AppData\\Local\\Temp\\igris_screen.png";
-
-    #[cfg(not(target_os = "windows"))]
-    let path = std::env::temp_dir().join("igris_screen.png").to_string_lossy().to_string();
+    let path = std::env::temp_dir()
+        .join("igris_screen.png")
+        .to_string_lossy()
+        .to_string();
 
     let screens = Screen::all()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to get screens: {}", e)))?;
@@ -361,7 +358,12 @@ fn open_in_browser(url: &str) -> Result<(), SkillError> {
 #[cfg(target_os = "windows")]
 fn open_in_browser(url: &str) -> Result<(), SkillError> {
     Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &format!("Start-Process '{}'", url)])
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &format!("Start-Process '{}'", url),
+        ])
         .status()
         .map_err(|e| SkillError::ExecutionFailed(format!("Failed to open URL: {}", e)))
         .map(|_| ())

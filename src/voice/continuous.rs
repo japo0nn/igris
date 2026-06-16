@@ -17,7 +17,12 @@ pub fn trigger_cooldown() {
 }
 
 pub fn start_listener(api_key: &str) -> Result<mpsc::Receiver<String>, String> {
-    if Command::new("which")
+    #[cfg(target_os = "windows")]
+    let finder = "where";
+    #[cfg(not(target_os = "windows"))]
+    let finder = "which";
+
+    if Command::new(finder)
         .arg("ffmpeg")
         .output()
         .map(|o| !o.status.success())
@@ -36,19 +41,24 @@ pub fn start_listener(api_key: &str) -> Result<mpsc::Receiver<String>, String> {
     Ok(rx)
 }
 
-
 /// Cross-platform ffmpeg microphone capture command
 fn get_ffmpeg_command(sample_rate: u32) -> Result<std::process::Child, String> {
     #[cfg(target_os = "macos")]
     {
         Command::new("ffmpeg")
             .args(&[
-                "-f", "avfoundation",
-                "-i", ":default",
-                "-ac", "1",
-                "-ar", &sample_rate.to_string(),
-                "-f", "s16le",
-                "-loglevel", "quiet",
+                "-f",
+                "avfoundation",
+                "-i",
+                ":default",
+                "-ac",
+                "1",
+                "-ar",
+                &sample_rate.to_string(),
+                "-f",
+                "s16le",
+                "-loglevel",
+                "quiet",
                 "pipe:1",
             ])
             .stdout(Stdio::piped())
@@ -61,12 +71,18 @@ fn get_ffmpeg_command(sample_rate: u32) -> Result<std::process::Child, String> {
         // Try pulse first, fallback to alsa
         let pulse = Command::new("ffmpeg")
             .args(&[
-                "-f", "pulse",
-                "-i", "default",
-                "-ac", "1",
-                "-ar", &sample_rate.to_string(),
-                "-f", "s16le",
-                "-loglevel", "quiet",
+                "-f",
+                "pulse",
+                "-i",
+                "default",
+                "-ac",
+                "1",
+                "-ar",
+                &sample_rate.to_string(),
+                "-f",
+                "s16le",
+                "-loglevel",
+                "quiet",
                 "pipe:1",
             ])
             .stdout(Stdio::piped())
@@ -74,38 +90,52 @@ fn get_ffmpeg_command(sample_rate: u32) -> Result<std::process::Child, String> {
             .spawn();
         match pulse {
             Ok(child) => Ok(child),
-            Err(_) => {
-                Command::new("ffmpeg")
-                    .args(&[
-                        "-f", "alsa",
-                        "-i", "default",
-                        "-ac", "1",
-                        "-ar", &sample_rate.to_string(),
-                        "-f", "s16le",
-                        "-loglevel", "quiet",
-                        "pipe:1",
-                    ])
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .map_err(|e| format!("Failed to start ffmpeg (Linux pulse/alsa): {}", e))
-            }
+            Err(_) => Command::new("ffmpeg")
+                .args(&[
+                    "-f",
+                    "alsa",
+                    "-i",
+                    "default",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    &sample_rate.to_string(),
+                    "-f",
+                    "s16le",
+                    "-loglevel",
+                    "quiet",
+                    "pipe:1",
+                ])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| format!("Failed to start ffmpeg (Linux pulse/alsa): {}", e)),
         }
     }
     #[cfg(target_os = "windows")]
     {
         // Try common microphone device names on Windows
-        let devices = ["audio=Microphone", "audio=Microphone (Realtek Audio)", "audio=default"];
+        let devices = [
+            "audio=Microphone",
+            "audio=Microphone (Realtek Audio)",
+            "audio=default",
+        ];
         let mut last_err = "No microphone found".to_string();
         for device in &devices {
             match Command::new("ffmpeg")
                 .args(&[
-                    "-f", "dshow",
-                    "-i", device,
-                    "-ac", "1",
-                    "-ar", &sample_rate.to_string(),
-                    "-f", "s16le",
-                    "-loglevel", "quiet",
+                    "-f",
+                    "dshow",
+                    "-i",
+                    device,
+                    "-ac",
+                    "1",
+                    "-ar",
+                    &sample_rate.to_string(),
+                    "-f",
+                    "s16le",
+                    "-loglevel",
+                    "quiet",
                     "pipe:1",
                 ])
                 .stdout(Stdio::piped())
@@ -116,7 +146,10 @@ fn get_ffmpeg_command(sample_rate: u32) -> Result<std::process::Child, String> {
                 Err(e) => last_err = format!("dshow error: {}", e),
             }
         }
-        Err(format!("Failed to start ffmpeg (Windows dshow): {}", last_err))
+        Err(format!(
+            "Failed to start ffmpeg (Windows dshow): {}",
+            last_err
+        ))
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
