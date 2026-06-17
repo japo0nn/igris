@@ -1,4 +1,5 @@
-use serde::Deserialize;
+﻿use serde::Deserialize;
+use dirs;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {
@@ -111,11 +112,26 @@ fn default_tg_session_path() -> String {
     String::from("./igris_tg.session")
 }
 
+fn find_config(filename: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let paths = [
+        format!("./{filename}"),
+        format!("{}/.config/igris/{}", dirs::home_dir().unwrap().display(), filename),
+    ];
+    for p in &paths {
+        if std::path::Path::new(p).exists() {
+            return std::fs::read_to_string(p).map_err(|e| e.into());
+        }
+    }
+    eprintln!("[IGRIS] Config file not found. Checked paths:");
+    for p in &paths { eprintln!("  - {}", p); }
+    Err(Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Config {} not found", filename))))
+}
+
 pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::Error>> {
-    let content = std::fs::read_to_string("./config.toml")?;
+    let content = find_config("config.toml")?;
     let mut config: AppConfig = toml::from_str(&content)?;
 
-    let secrets_content = std::fs::read_to_string("./secrets.toml")?;
+    let secrets_content = find_config("secrets.toml")?;
     let secrets: SecretsConfig = toml::from_str(&secrets_content)?;
 
     config.llm.api_key = Some(secrets.llm.api_key.clone());
