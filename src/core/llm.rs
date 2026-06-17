@@ -161,6 +161,11 @@ fn sanitize_json_strings(json: &str) -> String {
 fn remove_markdown_wrapper(content: &str) -> String {
     let trimmed = content.trim();
 
+    let trimmed = match trimmed.find("```json").or_else(|| trimmed.find("```")) {
+        Some(pos) => trimmed[pos..].trim_start(),
+        None => return trimmed.to_string(),
+    };
+
     let after_open = if let Some(rest) = trimmed.strip_prefix("```json") {
         rest
     } else if let Some(rest) = trimmed.strip_prefix("```") {

@@ -27,7 +27,7 @@ pub mod voice;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let name = "IGRIS";
-    let version = "0.1.0";
+    let version = "0.1.2";
     let status = "Active";
 
     println!("{name} {version}\nStatus: {status}");

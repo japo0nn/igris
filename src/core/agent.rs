@@ -165,10 +165,11 @@ pub async fn execute_agent_loop(
                         let user_choice =
                             prompt_user_permission(action, description, risk_level, options)?;
                         if !user_choice {
-                            return Err(IgrisError::PermissionDenied(format!(
+                            error_result = Some(IgrisError::PermissionDenied(format!(
                                 "User denied action: {}",
                                 description
                             )));
+                            break;
                         }
                         context.spinner.start("Thinking...".to_string()).await;
                     }
@@ -563,8 +564,7 @@ async fn handle_error(
 fn should_abort_on_error(error: &IgrisError) -> bool {
     matches!(
         error,
-        IgrisError::PermissionDenied(_)
-            | IgrisError::LlmUnavailable(_)
+        IgrisError::LlmUnavailable(_)
             | IgrisError::LlmTimeout(_)
             | IgrisError::ConfigError(_) // | IgrisError::MaxIterationsExceeded(_)
                                          // | IgrisError::MaxFixIterationsExceeded(_)

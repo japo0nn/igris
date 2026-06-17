@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+﻿use std::sync::{Arc, Mutex};
 
 use ferogram::{Client, InputMessage, SignInError, TransportKind};
 use tokio::runtime::Runtime;
@@ -307,7 +307,7 @@ impl TelegramSkill {
             s.spawn(|| {
                 rt.block_on(async {
                     client
-                        .send_message(peer.as_str(), InputMessage::text(text.as_str()))
+                        .send_message(peer.as_str(), InputMessage::markdown(text.as_str()))
                         .await
                         .map_err(|e| format!("send_message failed: {}", e))?;
                     Ok::<_, String>("Message sent.".to_string())
@@ -317,6 +317,14 @@ impl TelegramSkill {
             .unwrap()
         });
         Ok(SkillOutput::Text(res.map_err(SkillError::ExecutionFailed)?))
+    }
+
+    fn check_configs(&self) -> Result<SkillOutput, SkillError> {
+        if self.secrets.is_some(){
+            return Ok(SkillOutput::Text("Telegram AppId, AppHash and PhoneNumber already configured in secrets.toml".to_string()));
+        }else {
+            return Ok(SkillOutput::Text("Telegram AppId, AppHash and PhoneNumber doesnt configured in secrets.toml. Please ask user to configure it and reload the IGRIS".to_string()));
+        }
     }
 }
 
@@ -331,6 +339,7 @@ impl SkillModule for TelegramSkill {
 
     fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         match method {
+            "config" => self.check_configs(),
             "status" => self.status(),
             "login" => self.login(),
             "submit_code" => self.submit_code(args),
@@ -376,6 +385,11 @@ impl SkillModule for TelegramSkill {
                 method: "send_message".to_string(),
                 description: "Send a text message to a peer (me/username/id).".to_string(),
                 args_description: "peer | text. Example: me | Hello".to_string(),
+            },
+            MethodInfo {
+                method: "config".to_string(),
+                description: "Check Telegram configurations(Does user configured AppId, AppHash and PhoneNumber in secrets.toml)".to_string(),
+                args_description: "No arguments. Pass an empty string.".to_string(),
             },
         ]
     }
