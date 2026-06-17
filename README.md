@@ -57,12 +57,6 @@ Choose your platform and run one command:
 bash <(curl -fsSL https://raw.githubusercontent.com/japo0nn/igris/main/install.sh)
 ```
 
-### Windows (cmd, as Administrator)
-```bat
-curl -fsSLo install.bat https://raw.githubusercontent.com/japo0nn/igris/main/install.bat
-install.bat
-```
-
 ### Windows (PowerShell, as Administrator)
 ```powershell
 Set-ExecutionPolicy RemoteSigned -Scope Process -Force
