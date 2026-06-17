@@ -1,4 +1,5 @@
 name: Release
+permissions: write-all
 
 on:
   push:
@@ -102,4 +103,3 @@ jobs:
             - [macOS Apple Silicon](https://github.com/japo0nn/igris/releases/download/${{ github.ref_name }}/igris-aarch64-apple-darwin)
             - [Windows x86_64](https://github.com/japo0nn/igris/releases/download/${{ github.ref_name }}/igris-x86_64-pc-windows-msvc.exe)
           files: dist/*
-          generate_release_notes: true
