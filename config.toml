@@ -123,7 +123,7 @@ Example multi-step flow:
 """
 
 [topic_llm]
-model = "kr/claude-haiku-4.5"
+model = "oc/big-pickle"
 system_prompt = """
 You are a topic extraction system. Your only job is to extract topics from messages.
 
@@ -139,6 +139,7 @@ RULES:
 - prefer existing topics over creating new ones
 - only create a new topic if none of the existing ones fit
 - topics must be specific and meaningful, not generic (avoid: "message", "request", "response")
+- if you cant generate topics, then return just empty array
 
 EXAMPLES:
 Message: "show me what's in my Documents folder"

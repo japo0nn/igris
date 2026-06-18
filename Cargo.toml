@@ -27,5 +27,6 @@ rustyline = "13.0"
 ansi-regex = "0.1"
 nnnoiseless = "0.5.2"
 ferogram = "0.6.0"
+async-trait = "0.1.89"
 
 

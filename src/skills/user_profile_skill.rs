@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use async_trait::async_trait;
+
 use crate::models::metadata::{ModuleMetadata, ModuleType};
 use crate::skills::{MethodInfo, SkillError, SkillModule, SkillOutput};
 
@@ -122,6 +124,7 @@ impl UserProfileSkill {
     }
 }
 
+#[async_trait]
 impl SkillModule for UserProfileSkill {
     fn get_metadata(&self) -> &ModuleMetadata {
         &self.metadata
@@ -152,7 +155,7 @@ impl SkillModule for UserProfileSkill {
         ]
     }
 
-    fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
+    async fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         match method {
             "get-profile" => {
                 let profile = self.profile.lock().unwrap_or_else(|e| e.into_inner());

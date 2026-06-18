@@ -2,6 +2,7 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use enigo::{
     Axis, Button, Coordinate,
@@ -40,6 +41,7 @@ impl GuiSkill {
     }
 }
 
+#[async_trait]
 impl SkillModule for GuiSkill {
     fn get_metadata(&self) -> &ModuleMetadata {
         &self.metadata
@@ -49,7 +51,7 @@ impl SkillModule for GuiSkill {
         true
     }
 
-    fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
+    async fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         match method {
             "screenshot" => take_screenshot(),
             "analyze_screen" => self.analyze_screen(args),

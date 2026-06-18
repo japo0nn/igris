@@ -17,6 +17,9 @@ pub async fn ask_llm(
             "model": &config.llm.model,
             "messages": messages,
             "stream": false,
+            "thinking": {
+                "type": "disabled"
+            }
         })
         .to_string();
 
@@ -110,77 +113,98 @@ fn extract_content(response: &str) -> Result<String, IgrisError> {
 
     let content = raw["choices"][0]["message"]["content"]
         .as_str()
-        .unwrap_or_default()
-        .to_string();
+        .unwrap_or_default();
 
-    let stripped = remove_markdown_wrapper(&content);
-    Ok(sanitize_json_strings(&stripped))
+    Ok(extract_json_payload(content))
 }
 
-fn sanitize_json_strings(json: &str) -> String {
-    let mut result = String::with_capacity(json.len() * 2);
-    let mut in_string = false;
-    let mut chars = json.chars().peekable();
+fn extract_json_payload(content: &str) -> String {
+    let trimmed = content.trim();
 
-    while let Some(ch) = chars.next() {
+    if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
+        return trimmed.to_string();
+    }
+
+    let candidate = match extract_braced_substring(trimmed) {
+        Some(c) => c,
+        None => return trimmed.to_string(),
+    };
+
+    if serde_json::from_str::<serde_json::Value>(&candidate).is_ok() {
+        return candidate;
+    }
+
+    escape_raw_control_chars_in_strings(&candidate)
+}
+
+fn extract_braced_substring(text: &str) -> Option<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let start = chars.iter().position(|&c| c == '{' || c == '[')?;
+
+    let open = chars[start];
+    let close = if open == '{' { '}' } else { ']' };
+
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut end: Option<usize> = None;
+
+    for i in start..chars.len() {
+        let c = chars[i];
+
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match c {
+            '\\' if in_string => escaped = true,
+            '"' => in_string = !in_string,
+            c if !in_string && c == open => depth += 1,
+            c if !in_string && c == close => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    end.map(|e| chars[start..=e].iter().collect())
+}
+
+fn escape_raw_control_chars_in_strings(json: &str) -> String {
+    let mut result = String::with_capacity(json.len() + 16);
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for ch in json.chars() {
+        if escaped {
+            result.push(ch);
+            escaped = false;
+            continue;
+        }
+
         match ch {
-            '\\' if in_string => match chars.peek() {
-                Some(&'"') | Some(&'\\') | Some(&'/') | Some(&'b') | Some(&'f') | Some(&'n')
-                | Some(&'r') | Some(&'t') => {
-                    result.push('\\');
-                    result.push(chars.next().unwrap());
-                }
-                Some(&'u') => {
-                    result.push('\\');
-                    result.push(chars.next().unwrap());
-                    for _ in 0..4 {
-                        if let Some(c) = chars.next() {
-                            result.push(c);
-                        }
-                    }
-                }
-                _ => result.push_str("\\\\"),
-            },
+            '\\' if in_string => {
+                escaped = true;
+                result.push(ch);
+            }
             '"' => {
                 in_string = !in_string;
-                result.push('"');
+                result.push(ch);
             }
             '\n' if in_string => result.push_str("\\n"),
             '\r' if in_string => result.push_str("\\r"),
             '\t' if in_string => result.push_str("\\t"),
-            ch if in_string && (ch as u32) < 0x20 => {
-                result.push_str(&format!("\\u{:04x}", ch as u32));
+            c if in_string && (c as u32) < 0x20 => {
+                result.push_str(&format!("\\u{:04x}", c as u32));
             }
             _ => result.push(ch),
         }
     }
 
     result
-}
-
-fn remove_markdown_wrapper(content: &str) -> String {
-    let trimmed = content.trim();
-
-    let trimmed = match trimmed.find("```json").or_else(|| trimmed.find("```")) {
-        Some(pos) => trimmed[pos..].trim_start(),
-        None => return trimmed.to_string(),
-    };
-
-    let after_open = if let Some(rest) = trimmed.strip_prefix("```json") {
-        rest
-    } else if let Some(rest) = trimmed.strip_prefix("```") {
-        rest
-    } else {
-        return trimmed.to_string();
-    };
-
-    if let Some(close_pos) = after_open.rfind("\n```") {
-        return after_open[..close_pos].trim().to_string();
-    }
-
-    if let Some(inner) = after_open.trim_end().strip_suffix("```") {
-        return inner.trim().to_string();
-    }
-
-    after_open.trim().to_string()
 }

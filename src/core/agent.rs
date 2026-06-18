@@ -111,7 +111,7 @@ pub async fn execute_agent_loop(
                             .spinner
                             .add_log_line(format!("\x1b[2m|   \x1b[33m{}\x1b[0m", args));
 
-                        let execution = tokio::task::block_in_place(|| skill.execute(method, args));
+                        let execution = skill.execute(method, args).await;
 
                         match execution {
                             Ok(result) => {

@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::{error::IgrisError, models::metadata::ModuleMetadata};
@@ -10,10 +11,11 @@ pub mod user_profile_skill;
 pub mod voice_skill;
 pub mod web_search_skill;
 
+#[async_trait]
 pub trait SkillModule {
     fn get_metadata(&self) -> &ModuleMetadata;
     fn health_check(&self) -> bool;
-    fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError>;
+    async fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError>;
     fn available_methods(&self) -> Vec<MethodInfo>;
 }
 
@@ -76,3 +78,5 @@ impl From<rusqlite::Error> for SkillError {
         SkillError::ExecutionFailed(value.to_string())
     }
 }
+
+pub use shell_executor::ShellExecutor;

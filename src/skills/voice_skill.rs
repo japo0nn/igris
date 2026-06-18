@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+
 use crate::{
     models::metadata::{ModuleMetadata, ModuleType},
     skills::{MethodInfo, SkillError, SkillModule, SkillOutput},
@@ -31,6 +33,7 @@ impl VoiceSkill {
     }
 }
 
+#[async_trait]
 impl SkillModule for VoiceSkill {
     fn get_metadata(&self) -> &ModuleMetadata {
         &self.metadata
@@ -68,7 +71,7 @@ impl SkillModule for VoiceSkill {
         }
     }
 
-    fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
+    async fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         match method {
             "speak" => self.speak_impl(args),
             _ => Err(SkillError::NotFound(format!(

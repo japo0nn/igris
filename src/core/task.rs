@@ -113,11 +113,13 @@ async fn save_message_with_topics(
 
     let generated_topics: Vec<String> = serde_json::from_str(&content).unwrap_or_default();
 
-    insert_topic(
-        &context.connection.lock().unwrap_or_else(|e| e.into_inner()),
-        generated_topics,
-        message_id,
-    )?;
+    if generated_topics.len() > 0 {
+        insert_topic(
+            &context.connection.lock().unwrap_or_else(|e| e.into_inner()),
+            generated_topics,
+            message_id,
+        )?;
+    }
 
     Ok(())
 }

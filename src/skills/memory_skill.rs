@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Local, NaiveDateTime};
 use rusqlite::params;
 use uuid::Uuid;
@@ -30,6 +31,7 @@ impl MemorySkill {
     }
 }
 
+#[async_trait]
 impl SkillModule for MemorySkill {
     fn get_metadata(&self) -> &ModuleMetadata {
         &self.metadata
@@ -39,7 +41,7 @@ impl SkillModule for MemorySkill {
         true
     }
 
-    fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
+    async fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         let connection = &self
             .context
             .connection

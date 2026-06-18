@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use reqwest::blocking::Client as BlockingClient;
 use reqwest::header::{ACCEPT, ACCEPT_LANGUAGE, HeaderMap, USER_AGENT};
 use scraper::{Html, Selector};
@@ -260,6 +261,7 @@ impl WebSearchSkill {
     }
 }
 
+#[async_trait]
 impl SkillModule for WebSearchSkill {
     fn get_metadata(&self) -> &ModuleMetadata {
         &self.metadata
@@ -269,7 +271,7 @@ impl SkillModule for WebSearchSkill {
         true
     }
 
-    fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
+    async fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         match method {
             "search_web" => {
                 if args.trim().is_empty() {

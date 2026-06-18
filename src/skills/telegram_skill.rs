@@ -1,5 +1,6 @@
 ﻿use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use ferogram::{Client, InputMessage, SignInError, TransportKind};
 use tokio::runtime::Runtime;
 
@@ -328,6 +329,7 @@ impl TelegramSkill {
     }
 }
 
+#[async_trait]
 impl SkillModule for TelegramSkill {
     fn get_metadata(&self) -> &ModuleMetadata {
         &self.metadata
@@ -337,7 +339,7 @@ impl SkillModule for TelegramSkill {
         self.secrets.as_ref().map(|s| s.is_valid()).unwrap_or(false)
     }
 
-    fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
+    async fn execute(&self, method: &str, args: &str) -> Result<SkillOutput, SkillError> {
         match method {
             "config" => self.check_configs(),
             "status" => self.status(),
