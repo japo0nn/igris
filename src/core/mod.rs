@@ -12,6 +12,7 @@ pub mod markdown;
 pub mod spinner;
 pub mod task;
 pub mod utils;
+pub mod terminal_logger;
 
 #[derive(Debug, Clone)]
 pub struct CoreContext {

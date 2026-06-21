@@ -1,4 +1,4 @@
-﻿use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use ferogram::{Client, InputMessage, SignInError, TransportKind};
@@ -321,9 +321,12 @@ impl TelegramSkill {
     }
 
     fn check_configs(&self) -> Result<SkillOutput, SkillError> {
-        if self.secrets.is_some(){
-            return Ok(SkillOutput::Text("Telegram AppId, AppHash and PhoneNumber already configured in secrets.toml".to_string()));
-        }else {
+        if self.secrets.is_some() {
+            return Ok(SkillOutput::Text(
+                "Telegram AppId, AppHash and PhoneNumber already configured in secrets.toml"
+                    .to_string(),
+            ));
+        } else {
             return Ok(SkillOutput::Text("Telegram AppId, AppHash and PhoneNumber doesnt configured in secrets.toml. Please ask user to configure it and reload the IGRIS".to_string()));
         }
     }

@@ -34,6 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sv = supervisor::Supervisor::new(version);
     sv.log_event(supervisor::SupervisorEvent::Startup);
+    crate::core::terminal_logger::log_session_start(version);
+    crate::core::terminal_logger::log_session_start(version);
 
     let (config, secrets) = configs::llm::load_config()?;
 
@@ -86,13 +88,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 iteration: 0,
                 fix_iteration: 0,
                 constraints: None,
-                message: message,
+                message: message.clone(),
                 is_done: true,
                 actions: vec![],
             },
             &session,
         )
         .await?;
+        crate::core::terminal_logger::log_input(&message);
 
         execute_agent_loop(&mut messages, &context, &skills, &session).await?;
     } else if args.len() == 2 && (args[1] == "--help" || args[1] == "-h") {
@@ -104,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  igris --help              - show this help");
         return Ok(());
     } else if args.len() >= 2 && (args[1] == "--voice" || args[1] == "-v") {
-        // Voice mode: continuous listening + agent loop
+        // Voice mode with full mic lifecycle control
         let groq_api_key = secrets
             .voice
             .as_ref()
@@ -114,7 +117,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             });
 
-        let rx = crate::voice::continuous::start_listener(&groq_api_key)
+        let mut voice_controller = voice::VoiceController::new(&groq_api_key);
+        let rx = voice_controller.start_mic()
             .expect("Failed to start voice listener");
 
         let mut messages = vec![AssistantMessage {
@@ -130,6 +134,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("[Voice] Listening... Press Ctrl+C to exit.");
 
         while let Ok(text) = rx.recv() {
+            // 1. STOP the microphone IMMEDIATELY after receiving transcribed text
+            voice_controller.stop_mic();
+            eprintln!("[Voice] Mic stopped during processing.");
+
+            // 2. Process the transcribed text through the agent
             let task_object = crate::core::task::build_task_object(&text, &skills, &context, None)?;
             let mut session_messages = messages.clone();
             session_messages.push(AssistantMessage {
@@ -137,6 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 content: serde_json::json!(&task_object).to_string(),
             });
 
+            crate::core::terminal_logger::log_input(&text);
             crate::core::agent::execute_agent_loop(
                 &mut session_messages,
                 &context,
@@ -145,7 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
 
-            // TTS: speak the last assistant message
+            // 3. TTS: speak the last assistant message
             if let Some(last) = session_messages
                 .iter()
                 .rev()
@@ -154,18 +164,83 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&last.content) {
                     if let Some(msg) = json_value.get("message").and_then(|v| v.as_str()) {
                         if !msg.is_empty() {
-                            // Cross-platform TTS (macOS say, Linux espeak, Windows PowerShell)
+                            // Speak (blocking — waits for TTS to finish)
                             speak_text(msg);
-                            crate::voice::continuous::trigger_cooldown();
+                            voice::trigger_cooldown();
                         }
                     }
                 }
             }
+
+            // 4. RESTART the microphone after TTS is fully done
+            eprintln!("[Voice] Restarting mic...");
+            let _rx_new = voice_controller.restart_mic()
+                .expect("Failed to restart voice listener");
+            // The loop will now listen on the new receiver, but we need to replace rx.
+            // Since while let Ok(text) = rx.recv() owns rx, we break and restart the loop.
+            // Instead, we'll use a mutable reference pattern.
+            // Actually simpler: just restart and continue with same rx? No, start_mic creates new rx.
+            // We need to restructure: use loop with let rx = &mut rx? 
+            // Let's just wrap in an outer loop.
+            break; // Temporary break to restructure below
+        }
+
+        // Restructured: outer loop re-binds rx each time
+        // Actually let's rewrite a bit differently - use a while loop with manual control
+        eprintln!("[Voice] Entering main voice loop...");
+        loop {
+            let mut controller = voice::VoiceController::new(&groq_api_key);
+            let rx = controller.start_mic()
+                .expect("Failed to start voice listener");
+            eprintln!("[Voice] Mic started, waiting for voice...");
+            
+            match rx.recv() {
+                Ok(text) => {
+                    // Stop mic
+                    controller.stop_mic();
+                    eprintln!("[Voice] Mic stopped, processing: {}", text);
+                    
+                    // Process
+                    let task_object = crate::core::task::build_task_object(&text, &skills, &context, None)?;
+                    let mut session_messages = messages.clone();
+                    session_messages.push(AssistantMessage {
+                        role: "user".to_string(),
+                        content: serde_json::json!(&task_object).to_string(),
+                    });
+                    crate::core::terminal_logger::log_input(&text);
+                    crate::core::agent::execute_agent_loop(
+                        &mut session_messages,
+                        &context,
+                        &skills,
+                        &session,
+                    ).await?;
+                    
+                    // TTS
+                    if let Some(last) = session_messages.iter().rev().find(|m| m.role == "assistant") {
+                        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&last.content) {
+                            if let Some(msg) = json_value.get("message").and_then(|v| v.as_str()) {
+                                if !msg.is_empty() {
+                                    speak_text(msg);
+                                    voice::trigger_cooldown();
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Mic will be dropped at end of scope, restart in next iteration
+                }
+                Err(_) => {
+                    eprintln!("[Voice] Listener channel closed, restarting...");
+                }
+            }
+            // Drop controller -> stop mic, loop back to create new one
         }
     } else {
         chat_loopback(&context, &session, &skills, initial_history).await?;
     }
 
+    crate::core::terminal_logger::log_session_end(version);
+    crate::core::terminal_logger::log_session_end(version);
     sv.log_event(supervisor::SupervisorEvent::Shutdown);
     Ok(())
 }

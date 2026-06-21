@@ -261,6 +261,7 @@ async fn process_user_input(
     skills: &Vec<Box<dyn SkillModule>>,
     messages: &mut Vec<AssistantMessage>,
 ) -> Result<(), IgrisError> {
+    crate::core::terminal_logger::log_input(&input);
     let task_object = build_task_object(&input, skills, context, None)?;
     messages.push(AssistantMessage {
         role: "user".to_string(),

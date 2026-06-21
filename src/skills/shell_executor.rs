@@ -27,9 +27,7 @@ impl ShellExecutor {
                 description: "Execute shell commands and run programs".to_string(),
                 author: Some("IGRIS".to_string()),
             },
-            virtual_cwd: Mutex::new(
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            ),
+            virtual_cwd: Mutex::new(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
         }
     }
 
@@ -98,13 +96,11 @@ fn decode_console_output(bytes: &[u8]) -> String {
     }
 }
 
-
 async fn kill_process_tree(pid: Option<u32>) {
     let Some(pid) = pid else { return };
 
     #[cfg(unix)]
     unsafe {
-
         libc::kill(-(pid as i32), libc::SIGKILL);
     }
 
@@ -191,9 +187,10 @@ impl SkillModule for ShellExecutor {
             command.creation_flags(CREATE_NEW_PROCESS_GROUP);
         }
 
-        let child = command
-            .spawn()
-            .map_err(|e| SkillError::ExecutionFailed(format!("Failed to execute command: {}", e)))?;
+        crate::core::terminal_logger::log_shell_command(args);
+        let child = command.spawn().map_err(|e| {
+            SkillError::ExecutionFailed(format!("Failed to execute command: {}", e))
+        })?;
 
         let pid = child.id();
 
@@ -235,6 +232,7 @@ impl SkillModule for ShellExecutor {
             result_text.push_str(&format!("\n[STDERR]\n{}", stderr));
         }
 
+        crate::core::terminal_logger::log_shell_result(&result_text, false);
         Ok(SkillOutput::Text(result_text))
     }
 

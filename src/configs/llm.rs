@@ -1,5 +1,5 @@
-﻿use serde::Deserialize;
 use dirs;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {
@@ -115,7 +115,11 @@ fn default_tg_session_path() -> String {
 fn find_config(filename: &str) -> Result<String, Box<dyn std::error::Error>> {
     let paths = [
         format!("./{filename}"),
-        format!("{}/.config/igris/{}", dirs::home_dir().unwrap().display(), filename),
+        format!(
+            "{}/.config/igris/{}",
+            dirs::home_dir().unwrap().display(),
+            filename
+        ),
     ];
     for p in &paths {
         if std::path::Path::new(p).exists() {
@@ -123,8 +127,13 @@ fn find_config(filename: &str) -> Result<String, Box<dyn std::error::Error>> {
         }
     }
     eprintln!("[IGRIS] Config file not found. Checked paths:");
-    for p in &paths { eprintln!("  - {}", p); }
-    Err(Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Config {} not found", filename))))
+    for p in &paths {
+        eprintln!("  - {}", p);
+    }
+    Err(Box::new(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("Config {} not found", filename),
+    )))
 }
 
 pub fn load_config() -> Result<(AppConfig, SecretsConfig), Box<dyn std::error::Error>> {

@@ -59,7 +59,7 @@ impl fmt::Display for IgrisError {
                 iter, msg
             ),
             IgrisError::ValidatorTestsFailed(msg) => {
-                write!(f, "[VALIDATOR ERROR] Tests failed: {}", msg)
+               write!(f, "[VALIDATOR ERROR] Tests failed: {}", msg)
             }
             IgrisError::MaxIterationsExceeded(max) => {
                 write!(f, "[LOOP ERROR] Max iterations exceeded: {}", max)

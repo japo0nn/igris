@@ -564,9 +564,7 @@ async fn handle_error(
 fn should_abort_on_error(error: &IgrisError) -> bool {
     matches!(
         error,
-        IgrisError::LlmUnavailable(_)
-            | IgrisError::LlmTimeout(_)
-            | IgrisError::ConfigError(_) // | IgrisError::MaxIterationsExceeded(_)
-                                         // | IgrisError::MaxFixIterationsExceeded(_)
+        IgrisError::LlmUnavailable(_) | IgrisError::LlmTimeout(_) | IgrisError::ConfigError(_) // | IgrisError::MaxIterationsExceeded(_)
+                                                                                               // | IgrisError::MaxFixIterationsExceeded(_)
     )
 }
