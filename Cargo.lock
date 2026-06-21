@@ -1801,6 +1801,7 @@ dependencies = [
  "encoding_rs",
  "enigo",
  "ferogram",
+ "libc",
  "nnnoiseless",
  "reqwest 0.13.4",
  "rusqlite",
