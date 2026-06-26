@@ -52,9 +52,7 @@ impl ShellExecutor {
                     .to_string(),
                 author: Some("IGRIS".to_string()),
             },
-            virtual_cwd: Mutex::new(
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            ),
+            virtual_cwd: Mutex::new(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))),
         }
     }
 
@@ -67,30 +65,26 @@ impl ShellExecutor {
         let trimmed = cmd.trim();
 
         // Compound / piped / redirected -> not a pure cd, let the shell handle it.
-        if trimmed.contains(|c: char| {
-            matches!(c, ';' | '|' | '&' | '>' | '<' | '`' | '\n' | '\r')
-        }) {
+        if trimmed.contains(|c: char| matches!(c, ';' | '|' | '&' | '>' | '<' | '`' | '\n' | '\r'))
+        {
             return None;
         }
 
         let lower = trimmed.to_lowercase();
-        let raw_arg: &str = if lower == "cd"
-            || lower == "chdir"
-            || lower == "set-location"
-            || lower == "sl"
-        {
-            ""
-        } else if lower.starts_with("cd ") {
-            trimmed[3..].trim()
-        } else if lower.starts_with("chdir ") {
-            trimmed["chdir ".len()..].trim()
-        } else if lower.starts_with("set-location ") {
-            trimmed["set-location ".len()..].trim()
-        } else if lower.starts_with("sl ") {
-            trimmed[3..].trim()
-        } else {
-            return None;
-        };
+        let raw_arg: &str =
+            if lower == "cd" || lower == "chdir" || lower == "set-location" || lower == "sl" {
+                ""
+            } else if lower.starts_with("cd ") {
+                trimmed[3..].trim()
+            } else if lower.starts_with("chdir ") {
+                trimmed["chdir ".len()..].trim()
+            } else if lower.starts_with("set-location ") {
+                trimmed["set-location ".len()..].trim()
+            } else if lower.starts_with("sl ") {
+                trimmed[3..].trim()
+            } else {
+                return None;
+            };
 
         // Strip one layer of surrounding quotes, then expand %VAR%, $env:VAR,
         // ${VAR}, $VAR and a leading ~ before touching the filesystem.
@@ -188,7 +182,8 @@ fn truncate_text(s: String) -> String {
     match s.char_indices().nth(MAX_OUTPUT_CHARS) {
         Some((idx, _)) => format!(
             "{}\n... [output truncated at {} chars]",
-            &s[..idx], MAX_OUTPUT_CHARS
+            &s[..idx],
+            MAX_OUTPUT_CHARS
         ),
         None => s,
     }
@@ -198,8 +193,7 @@ fn truncate_text(s: String) -> String {
 fn strip_quotes(s: &str) -> &str {
     let b = s.as_bytes();
     if b.len() >= 2
-        && ((b[0] == b'"' && b[b.len() - 1] == b'"')
-            || (b[0] == b'\'' && b[b.len() - 1] == b'\''))
+        && ((b[0] == b'"' && b[b.len() - 1] == b'"') || (b[0] == b'\'' && b[b.len() - 1] == b'\''))
     {
         &s[1..s.len() - 1]
     } else {
@@ -365,10 +359,12 @@ impl SkillModule for ShellExecutor {
             // behave the same as in an interactive console.
             let wrapped = format!(
                 "$ProgressPreference='SilentlyContinue'; \
-                 [Console]::OutputEncoding=[System.Text.Encoding]::UTF8; \
-                 $OutputEncoding=[System.Text.Encoding]::UTF8; \
-                 & {{\n{}\n}} | Out-String -Width {}; \
-                 exit $LASTEXITCODE",
+                [Console]::OutputEncoding=[System.Text.Encoding]::UTF8; \
+                [Console]::InputEncoding=[System.Text.Encoding]::UTF8; \
+                $OutputEncoding=[System.Text.Encoding]::UTF8; \
+                $PSDefaultParameterValues['Get-Content:Encoding']='utf8'; \
+                & {{\n{}\n}} | Out-String -Width {}; \
+                exit $LASTEXITCODE",
                 args, PS_OUTPUT_WIDTH
             );
 
@@ -421,24 +417,23 @@ impl SkillModule for ShellExecutor {
         })?;
         let pid = child.id();
 
-        let output =
-            match tokio::time::timeout(COMMAND_TIMEOUT, child.wait_with_output()).await {
-                Ok(Ok(output)) => output,
-                Ok(Err(e)) => {
-                    return Err(SkillError::ExecutionFailed(format!(
-                        "Failed to wait for command: {}",
-                        e
-                    )));
-                }
-                Err(_elapsed) => {
-                    kill_process_tree(pid).await;
-                    return Err(SkillError::ExecutionFailed(format!(
-                        "[TIMEOUT] Command exceeded {}s and was killed: {}",
-                        COMMAND_TIMEOUT.as_secs(),
-                        args
-                    )));
-                }
-            };
+        let output = match tokio::time::timeout(COMMAND_TIMEOUT, child.wait_with_output()).await {
+            Ok(Ok(output)) => output,
+            Ok(Err(e)) => {
+                return Err(SkillError::ExecutionFailed(format!(
+                    "Failed to wait for command: {}",
+                    e
+                )));
+            }
+            Err(_elapsed) => {
+                kill_process_tree(pid).await;
+                return Err(SkillError::ExecutionFailed(format!(
+                    "[TIMEOUT] Command exceeded {}s and was killed: {}",
+                    COMMAND_TIMEOUT.as_secs(),
+                    args
+                )));
+            }
+        };
 
         let stdout = truncate_text(decode_console_output(&output.stdout));
         let stderr = truncate_text(decode_console_output(&output.stderr));

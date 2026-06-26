@@ -9,15 +9,22 @@ use std::path::PathBuf;
 /// Determine the log file path based on platform.
 #[cfg(debug_assertions)]
 fn get_log_path() -> PathBuf {
-    // Use dirs::data_dir() which returns:
-    //   macOS: ~/Library/Application Support/
-    //   Linux: ~/.local/share/
-    //   Windows: C:\Users\<user>\AppData\Roaming/
     let base = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("igris");
     let _ = fs::create_dir_all(&base);
     base.join("igris_terminal.log")
+}
+
+/// Truncate a string to at most `max_chars` characters on a valid UTF-8 boundary.
+/// Returns the slice and the total character count.
+#[cfg(debug_assertions)]
+fn truncate_on_char_boundary(s: &str, max_chars: usize) -> (&str, usize) {
+    let total = s.chars().count();
+    match s.char_indices().nth(max_chars) {
+        Some((idx, _)) => (&s[..idx], total),
+        None => (s, total),
+    }
 }
 
 /// Write a single line to the log file.
@@ -56,9 +63,10 @@ pub fn log_shell_command(command: &str) {
 /// Log a shell command result (output or error, first N chars).
 #[cfg(debug_assertions)]
 pub fn log_shell_result(result: &str, _truncated: bool) {
-    let max_len = 2000;
-    let display = if result.len() > max_len {
-        format!("{}... [truncated, {} total chars]", &result[..max_len], result.len())
+    let max_chars = 2000;
+    let (head, total) = truncate_on_char_boundary(result, max_chars);
+    let display = if total > max_chars {
+        format!("{}... [truncated, {} total chars]", head, total)
     } else {
         result.to_string()
     };
