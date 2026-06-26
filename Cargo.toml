@@ -28,6 +28,8 @@ ansi-regex = "0.1"
 nnnoiseless = "0.5.2"
 ferogram = "0.6.0"
 async-trait = "0.1.89"
-libc = "0.2.186"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 
