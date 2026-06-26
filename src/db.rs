@@ -1,4 +1,4 @@
-use chrono::Local;
+﻿use chrono::Local;
 use rusqlite::{Connection, params};
 use uuid::Uuid;
 
@@ -29,6 +29,7 @@ pub fn init_database(config: &AppConfig) -> Result<Connection, IgrisError> {
             session_id TEXT,
             role TEXT,
             content TEXT,
+            raw_json TEXT DEFAULT NULL,
             action TEXT,
             is_done INTEGER,
             timestamp TEXT,
@@ -65,30 +66,33 @@ pub fn insert_message(
     connection: &Connection,
     role: String,
     message: &ActionResponse,
+    raw_json: Option<&str>,
     session: &Session,
 ) -> Result<Uuid, IgrisError> {
-    let message = Message {
+    let msg = Message {
         id: Uuid::new_v4(),
         session_id: session.id,
         role: role,
         content: message.message.clone(),
+        raw_json: raw_json.map(|s| s.to_string()),
         action: Some(serde_json::json!(&message.actions).to_string()),
         is_done: message.is_done,
         timestamp: Local::now(),
     };
     connection.execute(
-        "INSERT INTO messages (id, timestamp, session_id, role, content, action, is_done) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO messages (id, timestamp, session_id, role, content, raw_json, action, is_done) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         (
-            &message.id.to_string(),
-            &message.timestamp.to_string(),
-            &message.session_id.to_string(),
-            &message.role,
-            &message.content,
-            &message.action,
-            &message.is_done
+            &msg.id.to_string(),
+            &msg.timestamp.to_string(),
+            &msg.session_id.to_string(),
+            &msg.role,
+            &msg.content,
+            &msg.raw_json,
+            &msg.action,
+            &msg.is_done
         ),
     )?;
-    return Ok(message.id);
+    return Ok(msg.id);
 }
 
 pub fn insert_topic(
@@ -148,7 +152,7 @@ pub fn get_messages_by_session(
     session_id: &Uuid,
 ) -> Result<Vec<Message>, IgrisError> {
     let mut stmt = connection.prepare(
-        "SELECT id, session_id, role, content, timestamp, action, is_done FROM messages
+        "SELECT id, session_id, role, content, raw_json, timestamp, action, is_done FROM messages
          WHERE session_id = ?1 ORDER BY timestamp ASC",
     )?;
     let messages = stmt
@@ -158,8 +162,9 @@ pub fn get_messages_by_session(
                 session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
                 role: row.get(2)?,
                 content: row.get(3)?,
-                timestamp: parse_db_timestamp(&row.get::<_, String>(4)?),
-                action: row.get::<_, Option<String>>(5)?,
+                raw_json: row.get::<_, Option<String>>(4)?,
+                timestamp: parse_db_timestamp(&row.get::<_, String>(5)?),
+                action: row.get::<_, Option<String>>(6)?,
                 is_done: row.get::<_, bool>(6)?,
             })
         })?
@@ -187,8 +192,9 @@ pub fn search_messages(
                 session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
                 role: row.get(2)?,
                 content: row.get(3)?,
-                timestamp: parse_db_timestamp(&row.get::<_, String>(4)?),
-                action: row.get::<_, Option<String>>(5)?,
+                raw_json: row.get::<_, Option<String>>(4)?,
+                timestamp: parse_db_timestamp(&row.get::<_, String>(5)?),
+                action: row.get::<_, Option<String>>(6)?,
                 is_done: row.get::<_, bool>(6)?,
             })
         })?
@@ -219,9 +225,10 @@ pub fn get_session_context_with_limit(
                 session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
                 role: row.get(2)?,
                 content: row.get(3)?,
-                action: row.get(4)?,
-                is_done: row.get::<_, i32>(5)? != 0,
-                timestamp: parse_db_timestamp(&row.get::<_, String>(6)?),
+                raw_json: row.get::<_, Option<String>>(4)?,
+                action: row.get(5)?,
+                is_done: row.get::<_, i32>(6)? != 0,
+                timestamp: parse_db_timestamp(&row.get::<_, String>(7)?),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -282,9 +289,10 @@ pub fn get_context_paginated(
                 session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or(Uuid::nil()),
                 role: row.get(2)?,
                 content: row.get(3)?,
-                action: row.get(4)?,
-                is_done: row.get::<_, i32>(5)? != 0,
-                timestamp: parse_db_timestamp(&row.get::<_, String>(6)?),
+                raw_json: row.get::<_, Option<String>>(4)?,
+                action: row.get(5)?,
+                is_done: row.get::<_, i32>(6)? != 0,
+                timestamp: parse_db_timestamp(&row.get::<_, String>(7)?),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

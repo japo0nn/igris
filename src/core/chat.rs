@@ -17,7 +17,7 @@ use crate::{
     core::{
         CoreContext,
         agent::execute_agent_loop,
-        task::{build_task_object, spawn_save_message},
+        task::{build_task_object, spawn_save_message_with_raw},
     },
     error::IgrisError,
     memory::Session,
@@ -263,12 +263,13 @@ async fn process_user_input(
 ) -> Result<(), IgrisError> {
     crate::core::terminal_logger::log_input(&input);
     let task_object = build_task_object(&input, skills, context, None)?;
+    let task_obj_json = serde_json::json!(&task_object).to_string();
     messages.push(AssistantMessage {
         role: "user".to_string(),
-        content: serde_json::json!(&task_object).to_string(),
+        content: task_obj_json.clone(),
     });
 
-    spawn_save_message(
+    spawn_save_message_with_raw(
         context,
         "user".to_string(),
         &ActionResponse {
@@ -276,6 +277,7 @@ async fn process_user_input(
             is_done: true,
             actions: vec![],
         },
+        Some(&task_obj_json),
         session,
     )
     .await?;

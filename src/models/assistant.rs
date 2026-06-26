@@ -90,8 +90,6 @@ pub struct ActionResponse {
     pub message: String,
     pub is_done: bool,
     pub actions: Vec<Action>,
-    // #[serde(default)]
-    // pub constraints: Option<Constraints>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+﻿use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -14,6 +14,7 @@ pub struct Message {
     pub session_id: Uuid,
     pub role: String,
     pub content: String,
+    pub raw_json: Option<String>,
     pub action: Option<String>,
     pub is_done: bool,
     pub timestamp: DateTime<Local>,

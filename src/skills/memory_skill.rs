@@ -420,7 +420,7 @@ impl MemorySkill {
 }
 
 fn map_row(row: &rusqlite::Row) -> rusqlite::Result<Message> {
-    Ok(Message {
+    Ok(Message { raw_json: None,
         id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap_or_else(|_| Uuid::nil()),
         session_id: Uuid::parse_str(&row.get::<_, String>(1)?).unwrap_or_else(|_| Uuid::nil()),
         role: row.get(2)?,

@@ -83,19 +83,31 @@ pub async fn spawn_save_message(
     message: &ActionResponse,
     session: &Session,
 ) -> Result<(), IgrisError> {
-    save_message_with_topics(context, role, message, session).await
+    save_message_with_topics(context, role, message, None, session).await
+}
+
+pub async fn spawn_save_message_with_raw(
+    context: &CoreContext,
+    role: String,
+    message: &ActionResponse,
+    raw_json: Option<&str>,
+    session: &Session,
+) -> Result<(), IgrisError> {
+    save_message_with_topics(context, role, message, raw_json, session).await
 }
 
 async fn save_message_with_topics(
     context: &CoreContext,
     role: String,
     message: &ActionResponse,
+    raw_json: Option<&str>,
     session: &Session,
 ) -> Result<(), IgrisError> {
     let message_id = insert_message(
         &context.connection.lock().unwrap_or_else(|e| e.into_inner()),
         role,
         &message,
+        raw_json,
         &session,
     )?;
 

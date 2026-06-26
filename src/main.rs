@@ -1,4 +1,4 @@
-use std::env;
+﻿use std::env;
 use std::sync::{Arc, Mutex};
 
 use crate::{
@@ -6,7 +6,7 @@ use crate::{
         CoreContext,
         agent::execute_agent_loop,
         chat::chat_loopback,
-        task::{build_task_object, spawn_save_message},
+        task::{build_task_object, spawn_save_message_with_raw},
     },
     db::{create_session, get_last_session_with_messages, get_messages_by_session, init_database},
     models::assistant::{ActionResponse, AssistantMessage},
@@ -76,12 +76,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let task_object = build_task_object(&message, &skills, &context, None)?;
+        let task_obj_json = serde_json::json!(&task_object).to_string();
         messages.push(AssistantMessage {
             role: "user".to_string(),
-            content: serde_json::json!(&task_object).to_string(),
+            content: task_obj_json.clone(),
         });
 
-        spawn_save_message(
+        spawn_save_message_with_raw(
             &context,
             "user".to_string(),
             &ActionResponse {
@@ -89,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 is_done: true,
                 actions: vec![],
             },
+            Some(&task_obj_json),
             &session,
         )
         .await?;
@@ -255,7 +257,7 @@ fn load_previous_session_history(context: &CoreContext) -> Vec<AssistantMessage>
                 .into_iter()
                 .map(|m| AssistantMessage {
                     role: m.role,
-                    content: m.content,
+                    content: m.raw_json.clone().unwrap_or(m.content.clone()),
                 })
                 .collect(),
             Err(_) => vec![],

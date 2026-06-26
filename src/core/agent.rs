@@ -1,10 +1,10 @@
-use std::io::{self, Write};
+﻿use std::io::{self, Write};
 
 use crate::{
     core::{
         CoreContext,
         llm::ask_llm,
-        task::{build_task_object, spawn_save_message},
+        task::{build_task_object, spawn_save_message, spawn_save_message_with_raw},
     },
     db,
     error::IgrisError,
@@ -39,7 +39,14 @@ pub async fn execute_agent_loop(
     'outer: loop {
         let mut response = loop {
             match serde_json::from_str::<ActionResponse>(&content) {
-                Ok(r) => break r,
+                Ok(r) => {
+                    spawn_save_message_with_raw(context, "assistant".to_string(), &r, Some(&content), session).await?;
+                    messages.push(AssistantMessage {
+                        role: String::from("assistant"),
+                        content: content.clone(),
+                    });
+                    break r;
+                }
                 Err(error) => {
                     eprintln!("System parse error: {}", error);
                     content = handle_error(
@@ -55,12 +62,6 @@ pub async fn execute_agent_loop(
                 }
             }
         };
-
-        spawn_save_message(context, "assistant".to_string(), &response, session).await?;
-        messages.push(AssistantMessage {
-            role: String::from("assistant"),
-            content: content.clone(),
-        });
 
         loop {
             if response.is_done {
@@ -294,10 +295,11 @@ pub async fn execute_agent_loop(
                     is_done: true,
                     actions: vec![],
                 };
-                spawn_save_message(context, "user".to_string(), &user_msg, session).await?;
+                let task_obj_json = serde_json::json!(&task_object).to_string();
+                spawn_save_message_with_raw(context, "user".to_string(), &user_msg, Some(&task_obj_json), session).await?;
                 messages.push(AssistantMessage {
                     role: String::from("user"),
-                    content: serde_json::json!(&task_object).to_string(),
+                    content: task_obj_json.clone(),
                 });
 
                 let estimated_tokens = db::estimate_context_tokens(
@@ -319,8 +321,7 @@ pub async fn execute_agent_loop(
             response = loop {
                 match serde_json::from_str::<ActionResponse>(&content) {
                     Ok(value) => {
-                        spawn_save_message(context, "assistant".to_string(), &value, session)
-                            .await?;
+                        spawn_save_message_with_raw(context, "assistant".to_string(), &value, Some(&content), session).await?;
                         messages.push(AssistantMessage {
                             role: String::from("assistant"),
                             content: content.clone(),
@@ -481,14 +482,17 @@ async fn handle_error(
             "[IGRIS] Non-recoverable error: {}. Task has been stopped.",
             error
         );
-        spawn_save_message(
+        let err_response = ActionResponse {
+            message: error_msg.clone(),
+            is_done: true,
+            actions: vec![],
+        };
+        let err_json = serde_json::to_string(&err_response).unwrap_or_default();
+        spawn_save_message_with_raw(
             context,
             "user".to_string(),
-            &ActionResponse {
-                message: error_msg.clone(),
-                is_done: true,
-                actions: vec![],
-            },
+            &err_response,
+            Some(&err_json),
             session,
         )
         .await?;
@@ -505,14 +509,15 @@ async fn handle_error(
             role: String::from("assistant"),
             content: content.clone(),
         });
+        let raw_action = ActionResponse {
+            message: content.clone(),
+            is_done: false,
+            actions: vec![],
+        };
         spawn_save_message(
             context,
             "assistant".to_string(),
-            &ActionResponse {
-                message: content.clone(),
-                is_done: false,
-                actions: vec![],
-            },
+            &raw_action,
             session,
         )
         .await?;
@@ -520,23 +525,25 @@ async fn handle_error(
 
     let error_str = format!("[SYSTEM EXECUTION RESULT] {}", error);
 
-    spawn_save_message(
+    let err_user_msg = ActionResponse {
+        message: error_str.clone(),
+        is_done: true,
+        actions: vec![],
+    };
+    spawn_save_message_with_raw(
         context,
         "user".to_string(),
-        &ActionResponse {
-            message: error_str.clone(),
-            is_done: true,
-            actions: vec![],
-        },
+        &err_user_msg,
+        Some(&error_str),
         session,
     )
     .await?;
 
     let task_object = build_task_object(&error_str, skills, context, Some(error_str.clone()))?;
-
+    let task_obj_json = serde_json::json!(&task_object).to_string();
     messages.push(AssistantMessage {
         role: String::from("user"),
-        content: serde_json::json!(&task_object).to_string(),
+        content: task_obj_json.clone(),
     });
 
     let new_content = ask_llm(messages, &context.config).await?;
