@@ -332,10 +332,10 @@ pub async fn execute_agent_loop(
                 )
                 .unwrap_or(0);
                 if estimated_tokens > token_limit {
-                    let _ = db::trim_old_messages(
+                    let _ = db::trim_messages_by_token_limit(
                         &context.connection.lock().unwrap_or_else(|e| e.into_inner()),
                         &session.id.to_string(),
-                        context.config.llm.retention_days,
+                        token_limit,
                     );
                 }
 

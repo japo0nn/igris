@@ -236,20 +236,62 @@ pub fn get_session_context_with_limit(
     Ok(messages)
 }
 
-pub fn trim_old_messages(
+/// Remove the oldest messages one by one until the total token count
+/// falls below the given limit. Uses tiktoken for accurate counting.
+pub fn trim_messages_by_token_limit(
     connection: &Connection,
     session_id: &str,
-    retention_days: i32,
+    token_limit: usize,
 ) -> Result<usize, IgrisError> {
-    let cutoff_date = chrono::Local::now() - chrono::Duration::days(retention_days as i64);
-    let cutoff_str = cutoff_date.to_string();
-
-    let affected = connection.execute(
-        "DELETE FROM messages WHERE session_id = ?1 AND timestamp < ?2",
-        rusqlite::params![session_id, &cutoff_str],
+    // Get all message IDs and content ordered oldest first
+    let mut stmt = connection.prepare(
+        "SELECT id, content FROM messages WHERE session_id = ?1 ORDER BY timestamp ASC"
     )?;
 
-    Ok(affected)
+    let messages: Vec<(String, String)> = stmt
+        .query_map(params![session_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if messages.is_empty() {
+        return Ok(0);
+    }
+
+    // Count total tokens
+    let contents: Vec<String> = messages.iter().map(|(_, c)| c.clone()).collect();
+    let total_tokens = crate::token_counter::count_tokens_batch(&contents)
+        .unwrap_or_else(|_| contents.iter().map(|c| c.len() / 4).sum());
+
+    if total_tokens <= token_limit {
+        return Ok(0);
+    }
+
+    // Remove oldest messages until under limit
+    let mut removed = 0usize;
+    let mut running_tokens = total_tokens;
+
+    for (msg_id, content) in &messages {
+        if running_tokens <= token_limit {
+            break;
+        }
+        // Count this message's tokens
+        let msg_tokens = crate::token_counter::count_tokens(content)
+            .unwrap_or_else(|_| content.len() / 4);
+
+        connection.execute(
+            "DELETE FROM messages WHERE id = ?1",
+            rusqlite::params![msg_id],
+        )?;
+        removed += 1;
+        running_tokens = running_tokens.saturating_sub(msg_tokens);
+    }
+
+    Ok(removed)
 }
 
 /// Estimate context tokens using tiktoken-rs for accurate counting.
