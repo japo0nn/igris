@@ -85,9 +85,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &context,
             "user".to_string(),
             &ActionResponse {
-                iteration: 0,
-                fix_iteration: 0,
-                constraints: None,
                 message: message.clone(),
                 is_done: true,
                 actions: vec![],

@@ -275,9 +275,6 @@ async fn process_user_input(
             message: input,
             is_done: true,
             actions: vec![],
-            iteration: 0,
-            fix_iteration: 0,
-            constraints: None,
         },
         session,
     )

@@ -13,9 +13,7 @@ You MUST always respond with valid JSON only. No plain text. No markdown. No cod
 {
   "message": "your response to the user in their language",
   "is_done": true,
-  "actions": [],
-  "iteration": 1,
-  "fix_iteration": 0
+  "actions": []
 }
 
 ACTIONS TYPES:

@@ -293,9 +293,6 @@ pub async fn execute_agent_loop(
                     message: combined_output.clone(),
                     is_done: true,
                     actions: vec![],
-                    iteration: 0,
-                    fix_iteration: 0,
-                    constraints: None,
                 };
                 spawn_save_message(context, "user".to_string(), &user_msg, session).await?;
                 messages.push(AssistantMessage {
@@ -491,9 +488,6 @@ async fn handle_error(
                 message: error_msg.clone(),
                 is_done: true,
                 actions: vec![],
-                iteration: 0,
-                fix_iteration: 0,
-                constraints: None,
             },
             session,
         )
@@ -502,9 +496,6 @@ async fn handle_error(
             message: error_msg,
             is_done: true,
             actions: vec![],
-            iteration: 0,
-            fix_iteration: 0,
-            constraints: None,
         };
         return Ok(serde_json::to_string(&final_response)
             .map_err(|_| IgrisError::ParseError("Serialization failed".to_string()))?);
@@ -521,9 +512,6 @@ async fn handle_error(
                 message: content.clone(),
                 is_done: false,
                 actions: vec![],
-                iteration: 0,
-                fix_iteration: 0,
-                constraints: None,
             },
             session,
         )
@@ -539,9 +527,6 @@ async fn handle_error(
             message: error_str.clone(),
             is_done: true,
             actions: vec![],
-            iteration: 0,
-            fix_iteration: 0,
-            constraints: None,
         },
         session,
     )
