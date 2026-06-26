@@ -1,17 +1,16 @@
-﻿use std::sync::OnceLock;
+use std::sync::OnceLock;
 use tiktoken_rs::CoreBPE;
 
 /// Cached tokenizer instance (initialized once)
 fn get_tokenizer() -> Result<&'static CoreBPE, String> {
     static TOKENIZER: OnceLock<Result<CoreBPE, String>> = OnceLock::new();
-    TOKENIZER.get_or_init(|| {
-        match tiktoken_rs::cl100k_base() {
+    TOKENIZER
+        .get_or_init(|| match tiktoken_rs::cl100k_base() {
             Ok(bpe) => Ok(bpe),
             Err(e) => Err(format!("Failed to initialize tiktoken tokenizer: {}", e)),
-        }
-    })
-    .as_ref()
-    .map_err(|e| e.clone())
+        })
+        .as_ref()
+        .map_err(|e| e.clone())
 }
 
 /// Count tokens in a single text string using cl100k_base (GPT-4/GPT-3.5)

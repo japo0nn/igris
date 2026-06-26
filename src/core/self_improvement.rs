@@ -1,10 +1,16 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 use crate::error::IgrisError;
 use crate::models::assistant::Action;
+
+const COMPILE_TIMEOUT: Duration = Duration::from_secs(300);
+const SANDBOX_IMAGE: &str = "rust:latest";
+const CARGO_CACHE_VOLUME: &str = "igris_cargo_cache";
 
 /// Буфер для сбора chunk'ов модуля перед компиляцией
 #[derive(Debug, Clone)]
@@ -66,6 +72,17 @@ impl ChunkBuffer {
 }
 
 /// Движок самоулучшения IGRIS
+fn is_docker_available() -> bool {
+    static DOCKER_CHECK: OnceLock<bool> = OnceLock::new();
+    *DOCKER_CHECK.get_or_init(|| {
+        std::process::Command::new("docker")
+            .args(["--version"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
+}
+
 pub struct SelfImprovementEngine {
     /// Буферы для незавершённых модулей: module_name -> ChunkBuffer
     pub chunk_buffers: Arc<Mutex<HashMap<String, ChunkBuffer>>>,
@@ -146,13 +163,13 @@ impl SelfImprovementEngine {
         // Генерируем Cargo.toml
         let mut cargo_toml = format!(
             r#"[package]
-name = "{}"
-version = "0.1.0"
-edition = "2021"
+                name = "{}"
+                version = "0.1.0"
+                edition = "2021"
 
-[dependencies]
-igris_sdk = {{ path = "{}" }}
-"#,
+                [dependencies]
+                igris_sdk = {{ path = "{}" }}
+                "#,
             module_name,
             self.modules_dir
                 .parent()
@@ -173,13 +190,13 @@ igris_sdk = {{ path = "{}" }}
         let lib_content = format!(
             r#"use igris_sdk::{{SkillModule, SkillOutput, SkillError, MethodInfo, ModuleMetadata}};
 
-{}
+            {}
 
-#[no_mangle]
-pub extern "C" fn create_skill() -> Box<dyn SkillModule> {{
-    Box::new({}Module)
-}}
-"#,
+            #[no_mangle]
+            pub extern "C" fn create_skill() -> Box<dyn SkillModule> {{
+                Box::new({}Module)
+            }}
+            "#,
             code, module_name
         );
 
@@ -197,7 +214,73 @@ pub extern "C" fn create_skill() -> Box<dyn SkillModule> {{
 
     /// Запускает cargo build в директории модуля
     async fn compile_module(&self, module_dir: &PathBuf) -> Result<String, IgrisError> {
-        // Используем tokio::process для асинхронного запуска
+        if is_docker_available() {
+            match self.compile_with_docker(module_dir).await {
+                Ok(out) => return Ok(out),
+                Err(e) => {
+                    eprintln!("[SANDBOX] Docker failed, falling back to local: {}", e);
+                }
+            }
+        }
+        self.compile_local(module_dir).await
+    }
+
+    async fn compile_with_docker(&self, module_dir: &PathBuf) -> Result<String, IgrisError> {
+        let module_path_str = module_dir.to_string_lossy().replace("\\", "/");
+        let docker_path = if cfg!(windows)
+            && module_path_str.len() >= 3
+            && module_path_str.as_bytes()[0].is_ascii_alphabetic()
+            && module_path_str.as_bytes()[1] == b':'
+        {
+            let drive = (module_path_str.as_bytes()[0] as char).to_ascii_lowercase();
+            format!("/{}{}", drive, &module_path_str[2..])
+        } else {
+            module_path_str
+        };
+
+        let output = tokio::process::Command::new("docker")
+            .args([
+                "run",
+                "--rm",
+                "--cpus",
+                "0.5",
+                "--memory",
+                "256m",
+                "--network",
+                "none",
+                "--read-only",
+                "--tmpfs",
+                "/tmp:noexec,nosuid,size=64m",
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "-v",
+                &format!("{}:/build", docker_path),
+                "-v",
+                &format!("{}:/usr/local/cargo/registry", CARGO_CACHE_VOLUME),
+                "-w",
+                "/build",
+                SANDBOX_IMAGE,
+                "cargo",
+                "build",
+                "--release",
+            ])
+            .output()
+            .await
+            .map_err(|e| IgrisError::Recoverable(format!("Docker execution error: {}", e)))?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            Err(IgrisError::Recoverable(format!(
+                "Docker compilation failed:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            )))
+        }
+    }
+
+    async fn compile_local(&self, module_dir: &PathBuf) -> Result<String, IgrisError> {
         let output = tokio::process::Command::new("cargo")
             .args(["build", "--release"])
             .current_dir(module_dir)
@@ -210,7 +293,6 @@ pub extern "C" fn create_skill() -> Box<dyn SkillModule> {{
             Ok(stdout)
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            // recoverable — можно передать LLM для исправления
             Err(IgrisError::Recoverable(format!(
                 "Compilation failed:\n{}",
                 stderr

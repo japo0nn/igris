@@ -258,14 +258,13 @@ pub fn estimate_context_tokens(
     connection: &Connection,
     session_id: &str,
 ) -> Result<usize, IgrisError> {
-    let mut stmt =
-        connection.prepare("SELECT content FROM messages WHERE session_id = ?1 ORDER BY timestamp ASC")?;
+    let mut stmt = connection
+        .prepare("SELECT content FROM messages WHERE session_id = ?1 ORDER BY timestamp ASC")?;
 
-    let messages: Vec<String> = stmt.query_map(params![session_id], |row| {
-        row.get::<_, String>(0)
-    })?
-    .filter_map(|r| r.ok())
-    .collect();
+    let messages: Vec<String> = stmt
+        .query_map(params![session_id], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
 
     // Try tiktoken first; fall back to simple estimation if it fails.
     match crate::token_counter::count_tokens_batch(&messages) {
