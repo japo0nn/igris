@@ -3,7 +3,7 @@ use std::thread;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use enigo::{
     Axis, Button, Coordinate,
     Direction::{Click, Press, Release},
@@ -212,7 +212,7 @@ fn take_screenshot() -> Result<SkillOutput, SkillError> {
         let scale = MAX_SIZE as f32 / orig_width.max(orig_height) as f32;
         let new_w = (orig_width as f32 * scale) as u32;
         let new_h = (orig_height as f32 * scale) as u32;
-        use screenshots::image::{DynamicImage, imageops::FilterType};
+        use screenshots::image::{imageops::FilterType, DynamicImage};
         DynamicImage::ImageRgba8(image)
             .resize(new_w, new_h, FilterType::Triangle)
             .to_rgba8()

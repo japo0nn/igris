@@ -35,8 +35,7 @@ impl VoiceController {
         let sample_rate = self.sample_rate;
 
         let mut child = get_ffmpeg_command(sample_rate)?;
-        let child_stdout = child.stdout.take()
-            .ok_or("Failed to get ffmpeg stdout")?;
+        let child_stdout = child.stdout.take().ok_or("Failed to get ffmpeg stdout")?;
         self.ffmpeg_child = Some(child);
 
         thread::spawn(move || {
@@ -86,9 +85,19 @@ fn get_ffmpeg_command(sample_rate: u32) -> Result<Child, String> {
     {
         Command::new("ffmpeg")
             .args(&[
-                "-f", "avfoundation", "-i", ":default",
-                "-ac", "1", "-ar", &sample_rate.to_string(),
-                "-f", "s16le", "-loglevel", "quiet", "pipe:1",
+                "-f",
+                "avfoundation",
+                "-i",
+                ":default",
+                "-ac",
+                "1",
+                "-ar",
+                &sample_rate.to_string(),
+                "-f",
+                "s16le",
+                "-loglevel",
+                "quiet",
+                "pipe:1",
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -99,9 +108,19 @@ fn get_ffmpeg_command(sample_rate: u32) -> Result<Child, String> {
     {
         Command::new("ffmpeg")
             .args(&[
-                "-f", "pulse", "-i", "default",
-                "-ac", "1", "-ar", &sample_rate.to_string(),
-                "-f", "s16le", "-loglevel", "quiet", "pipe:1",
+                "-f",
+                "pulse",
+                "-i",
+                "default",
+                "-ac",
+                "1",
+                "-ar",
+                &sample_rate.to_string(),
+                "-f",
+                "s16le",
+                "-loglevel",
+                "quiet",
+                "pipe:1",
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -112,9 +131,19 @@ fn get_ffmpeg_command(sample_rate: u32) -> Result<Child, String> {
     {
         Command::new("ffmpeg")
             .args(&[
-                "-f", "dshow", "-i", "audio=Microphone",
-                "-ac", "1", "-ar", &sample_rate.to_string(),
-                "-f", "s16le", "-loglevel", "quiet", "pipe:1",
+                "-f",
+                "dshow",
+                "-i",
+                "audio=Microphone",
+                "-ac",
+                "1",
+                "-ar",
+                &sample_rate.to_string(),
+                "-f",
+                "s16le",
+                "-loglevel",
+                "quiet",
+                "pipe:1",
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -186,7 +215,8 @@ fn run_listener_thread(
                 current_frame.push(sample);
 
                 if current_frame.len() == frame_size {
-                    let mut frame = std::mem::replace(&mut current_frame, Vec::with_capacity(frame_size));
+                    let mut frame =
+                        std::mem::replace(&mut current_frame, Vec::with_capacity(frame_size));
 
                     hpf.process(&mut frame);
                     denoise_frame(&mut denoise, &mut frame);
@@ -194,14 +224,22 @@ fn run_listener_thread(
                     frame_count += 1;
 
                     let frame_rms = (frame.iter().map(|&s| (s as f64).powi(2)).sum::<f64>()
-                        / frame.len() as f64).sqrt();
+                        / frame.len() as f64)
+                        .sqrt();
 
-                    let threshold = if is_speaking { speech_threshold_factor_active } else { speech_threshold_factor };
-                    let is_voice = frame_rms > noise_floor * threshold && frame_rms > min_rms_for_voice;
+                    let threshold = if is_speaking {
+                        speech_threshold_factor_active
+                    } else {
+                        speech_threshold_factor
+                    };
+                    let is_voice =
+                        frame_rms > noise_floor * threshold && frame_rms > min_rms_for_voice;
 
                     if !is_voice {
                         noise_floor = noise_floor * 0.95 + frame_rms * 0.05;
-                        if noise_floor < 10.0 { noise_floor = 10.0; }
+                        if noise_floor < 10.0 {
+                            noise_floor = 10.0;
+                        }
                     }
 
                     if frame_count % 30 == 0 {
@@ -215,7 +253,10 @@ fn run_listener_thread(
                     if is_voice {
                         if !is_speaking {
                             is_speaking = true;
-                            eprintln!("[Voice] Speech STARTED (RMS: {:.1}, NF: {:.1})", frame_rms, noise_floor);
+                            eprintln!(
+                                "[Voice] Speech STARTED (RMS: {:.1}, NF: {:.1})",
+                                frame_rms, noise_floor
+                            );
                             speech_buffer.clear();
                         }
                         speech_buffer.extend_from_slice(&frame);
@@ -224,17 +265,25 @@ fn run_listener_thread(
                         speech_buffer.extend_from_slice(&frame);
                         if silence_start.is_none() {
                             silence_start = Some(Instant::now());
-                        } else if silence_start.unwrap().elapsed().as_millis() as u64 > silence_timeout_ms {
+                        } else if silence_start.unwrap().elapsed().as_millis() as u64
+                            > silence_timeout_ms
+                        {
                             is_speaking = false;
 
                             if speech_buffer.len() < min_speech_samples {
-                                eprintln!("[Voice] Speech too short ({} samples), ignoring.", speech_buffer.len());
+                                eprintln!(
+                                    "[Voice] Speech too short ({} samples), ignoring.",
+                                    speech_buffer.len()
+                                );
                                 speech_buffer.clear();
                                 silence_start = None;
                                 continue;
                             }
 
-                            eprintln!("[Voice] Speech ended, transcribing {} samples", speech_buffer.len());
+                            eprintln!(
+                                "[Voice] Speech ended, transcribing {} samples",
+                                speech_buffer.len()
+                            );
                             if !speech_buffer.is_empty() {
                                 normalize_audio(&mut speech_buffer);
                                 let wav_data = pcm_to_wav(&speech_buffer, sample_rate);
@@ -261,10 +310,18 @@ fn run_listener_thread(
     eprintln!("[Voice] Listener thread exiting.");
 }
 
-struct HighPassFilter { prev_x: f64, prev_y: f64 }
+struct HighPassFilter {
+    prev_x: f64,
+    prev_y: f64,
+}
 
 impl HighPassFilter {
-    fn new() -> Self { Self { prev_x: 0.0, prev_y: 0.0 } }
+    fn new() -> Self {
+        Self {
+            prev_x: 0.0,
+            prev_y: 0.0,
+        }
+    }
     fn process(&mut self, frame: &mut [i16]) {
         for sample in frame.iter_mut() {
             let x = *sample as f64;
@@ -277,9 +334,13 @@ impl HighPassFilter {
 }
 
 fn normalize_audio(samples: &mut [i16]) {
-    if samples.is_empty() { return; }
+    if samples.is_empty() {
+        return;
+    }
     let max_val = samples.iter().map(|&s| s.abs()).max().unwrap_or(1);
-    if max_val == 0 { return; }
+    if max_val == 0 {
+        return;
+    }
     let target_peak: f64 = 0.95 * 32768.0;
     let gain = (target_peak / max_val as f64).min(10.0);
     for sample in samples.iter_mut() {
@@ -329,7 +390,9 @@ fn transcribe_groq(wav_data: &[u8], api_key: &str) -> Result<String, String> {
     let mut body = Vec::new();
 
     body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-    body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\n");
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\n",
+    );
     body.extend_from_slice(b"Content-Type: audio/wav\r\n\r\n");
     body.extend_from_slice(wav_data);
     body.extend_from_slice(b"\r\n");
@@ -348,14 +411,20 @@ fn transcribe_groq(wav_data: &[u8], api_key: &str) -> Result<String, String> {
     let response = client
         .post("https://api.groq.com/openai/v1/audio/transcriptions")
         .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", format!("multipart/form-data; boundary={}", boundary))
+        .header(
+            "Content-Type",
+            format!("multipart/form-data; boundary={}", boundary),
+        )
         .body(body)
         .send()
         .map_err(|e| format!("Groq request failed: {}", e))?;
 
-    let text = response.text().map_err(|e| format!("Failed to read response: {}", e))?;
+    let text = response
+        .text()
+        .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {} -> {}", e, text))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse: {} -> {}", e, text))?;
 
     if let Some(transcript) = json["text"].as_str() {
         Ok(transcript.to_string())

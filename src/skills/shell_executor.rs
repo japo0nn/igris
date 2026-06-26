@@ -308,6 +308,31 @@ async fn kill_process_tree(pid: Option<u32>) {
 // SkillModule impl
 // ===========================================================================
 
+/// Check for dangerous command patterns
+fn check_danger(cmd: &str) -> bool {
+    let lower = cmd.to_lowercase();
+    lower.contains("rm -rf /")
+        || lower.contains("rm -rf /*")
+        || lower.contains("rm -rf ~")
+        || lower.contains("format")
+        || lower.contains("del /f")
+        || lower.contains("rd /s")
+        || lower.contains("diskpart")
+        || lower.contains("reg delete")
+        || lower.contains("taskkill /f /im")
+        || lower.contains("shutdown /r")
+        || lower.contains("shutdown /s")
+        || lower.contains("kill -9")
+        || lower.contains("sudo !!")
+        || lower.contains("sudo su")
+        || lower.contains("sudo -i")
+        || lower.contains("cryptsetup")
+        || lower.contains("bcdedit")
+        || lower.contains("netsh advfirewall")
+        || lower.contains("iptables -f")
+        || lower.contains("fsutil")
+}
+
 #[async_trait]
 impl SkillModule for ShellExecutor {
     fn get_metadata(&self) -> &ModuleMetadata {
@@ -332,6 +357,13 @@ impl SkillModule for ShellExecutor {
                 Ok(message) => Ok(SkillOutput::Text(message)),
                 Err(message) => Err(SkillError::ExecutionFailed(message)),
             };
+        }
+
+        // Check for dangerous commands
+        if check_danger(args) {
+            return Err(SkillError::Recoverable(
+                "[BLOCKED] Dangerous command".to_string(),
+            ));
         }
 
         // 2) Snapshot the virtual cwd to spawn the child in.

@@ -3,10 +3,11 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     core::{
-        CoreContext,
         agent::execute_agent_loop,
         chat::chat_loopback,
+        self_improvement::SelfImprovementEngine,
         task::{build_task_object, spawn_save_message_with_raw},
+        CoreContext,
     },
     db::{create_session, get_last_session_with_messages, get_messages_by_session, init_database},
     models::assistant::{ActionResponse, AssistantMessage},
@@ -22,6 +23,7 @@ pub mod models;
 pub mod registry;
 pub mod skills;
 pub mod supervisor;
+pub mod token_counter;
 pub mod voice;
 
 #[tokio::main]
@@ -34,7 +36,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sv = supervisor::Supervisor::new(version);
     sv.log_event(supervisor::SupervisorEvent::Startup);
-    crate::core::terminal_logger::log_session_start(version);
     crate::core::terminal_logger::log_session_start(version);
 
     let (config, secrets) = configs::llm::load_config()?;
@@ -51,6 +52,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let skills = init_modules_metadata(&context)?;
     let session = create_session(&context.connection.lock().unwrap_or_else(|e| e.into_inner()))?;
+
+    // Создаём SelfImprovementEngine для обработки GenerateChunk
+    let self_improvement = SelfImprovementEngine::new();
 
     let initial_history = load_previous_session_history(&context);
     if !initial_history.is_empty() {
@@ -96,7 +100,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
         crate::core::terminal_logger::log_input(&message);
 
-        execute_agent_loop(&mut messages, &context, &skills, &session).await?;
+        execute_agent_loop(
+            &mut messages,
+            &context,
+            &skills,
+            &session,
+            &self_improvement,
+        )
+        .await?;
     } else if args.len() == 2 && (args[1] == "--help" || args[1] == "-h") {
         println!("IGRIS v0.1.0");
         println!("Usage:");
@@ -117,7 +128,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
         let mut voice_controller = voice::VoiceController::new(&groq_api_key);
-        let rx = voice_controller.start_mic()
+        let rx = voice_controller
+            .start_mic()
             .expect("Failed to start voice listener");
 
         let mut messages = vec![AssistantMessage {
@@ -133,11 +145,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("[Voice] Listening... Press Ctrl+C to exit.");
 
         while let Ok(text) = rx.recv() {
-            // 1. STOP the microphone IMMEDIATELY after receiving transcribed text
             voice_controller.stop_mic();
             eprintln!("[Voice] Mic stopped during processing.");
 
-            // 2. Process the transcribed text through the agent
             let task_object = crate::core::task::build_task_object(&text, &skills, &context, None)?;
             let mut session_messages = messages.clone();
             session_messages.push(AssistantMessage {
@@ -151,10 +161,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &context,
                 &skills,
                 &session,
+                &self_improvement,
             )
             .await?;
 
-            // 3. TTS: speak the last assistant message
             if let Some(last) = session_messages
                 .iter()
                 .rev()
@@ -163,7 +173,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&last.content) {
                     if let Some(msg) = json_value.get("message").and_then(|v| v.as_str()) {
                         if !msg.is_empty() {
-                            // Speak (blocking — waits for TTS to finish)
                             speak_text(msg);
                             voice::trigger_cooldown();
                         }
@@ -171,36 +180,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // 4. RESTART the microphone after TTS is fully done
             eprintln!("[Voice] Restarting mic...");
-            let _rx_new = voice_controller.restart_mic()
+            let _rx_new = voice_controller
+                .restart_mic()
                 .expect("Failed to restart voice listener");
-            // The loop will now listen on the new receiver, but we need to replace rx.
-            // Since while let Ok(text) = rx.recv() owns rx, we break and restart the loop.
-            // Instead, we'll use a mutable reference pattern.
-            // Actually simpler: just restart and continue with same rx? No, start_mic creates new rx.
-            // We need to restructure: use loop with let rx = &mut rx? 
-            // Let's just wrap in an outer loop.
-            break; // Temporary break to restructure below
+            break;
         }
 
-        // Restructured: outer loop re-binds rx each time
-        // Actually let's rewrite a bit differently - use a while loop with manual control
         eprintln!("[Voice] Entering main voice loop...");
         loop {
             let mut controller = voice::VoiceController::new(&groq_api_key);
-            let rx = controller.start_mic()
+            let rx = controller
+                .start_mic()
                 .expect("Failed to start voice listener");
             eprintln!("[Voice] Mic started, waiting for voice...");
-            
+
             match rx.recv() {
                 Ok(text) => {
-                    // Stop mic
                     controller.stop_mic();
                     eprintln!("[Voice] Mic stopped, processing: {}", text);
-                    
-                    // Process
-                    let task_object = crate::core::task::build_task_object(&text, &skills, &context, None)?;
+
+                    let task_object =
+                        crate::core::task::build_task_object(&text, &skills, &context, None)?;
                     let mut session_messages = messages.clone();
                     session_messages.push(AssistantMessage {
                         role: "user".to_string(),
@@ -212,11 +213,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &context,
                         &skills,
                         &session,
-                    ).await?;
-                    
-                    // TTS
-                    if let Some(last) = session_messages.iter().rev().find(|m| m.role == "assistant") {
-                        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&last.content) {
+                        &self_improvement,
+                    )
+                    .await?;
+
+                    if let Some(last) = session_messages
+                        .iter()
+                        .rev()
+                        .find(|m| m.role == "assistant")
+                    {
+                        if let Ok(json_value) =
+                            serde_json::from_str::<serde_json::Value>(&last.content)
+                        {
                             if let Some(msg) = json_value.get("message").and_then(|v| v.as_str()) {
                                 if !msg.is_empty() {
                                     speak_text(msg);
@@ -225,26 +233,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
-                    
-                    // Mic will be dropped at end of scope, restart in next iteration
                 }
                 Err(_) => {
                     eprintln!("[Voice] Listener channel closed, restarting...");
                 }
             }
-            // Drop controller -> stop mic, loop back to create new one
         }
     } else {
         chat_loopback(&context, &session, &skills, initial_history).await?;
     }
 
     crate::core::terminal_logger::log_session_end(version);
-    crate::core::terminal_logger::log_session_end(version);
     sv.log_event(supervisor::SupervisorEvent::Shutdown);
     Ok(())
 }
 
-/// Cross-platform TTS wrapper around core::utils::speak_text.
 fn speak_text(text: &str) {
     let _ = crate::core::utils::speak_text(text);
 }

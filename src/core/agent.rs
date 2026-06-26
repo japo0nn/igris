@@ -1,16 +1,17 @@
-﻿use std::io::{self, Write};
+use std::io::{self, Write};
 
 use crate::{
     core::{
-        CoreContext,
         llm::ask_llm,
+        self_improvement::SelfImprovementEngine,
         task::{build_task_object, spawn_save_message, spawn_save_message_with_raw},
+        CoreContext,
     },
     db,
     error::IgrisError,
     memory::Session,
     models::assistant::{Action, ActionResponse, AssistantMessage},
-    skills::{SkillModule, SkillOutput, find_skill},
+    skills::{find_skill, SkillModule, SkillOutput},
 };
 
 pub async fn execute_agent_loop(
@@ -18,6 +19,7 @@ pub async fn execute_agent_loop(
     context: &CoreContext,
     skills: &Vec<Box<dyn SkillModule>>,
     session: &Session,
+    self_improvement: &SelfImprovementEngine,
 ) -> Result<(), IgrisError> {
     let token_limit = context.config.llm.context_token_limit;
 
@@ -40,7 +42,14 @@ pub async fn execute_agent_loop(
         let mut response = loop {
             match serde_json::from_str::<ActionResponse>(&content) {
                 Ok(r) => {
-                    spawn_save_message_with_raw(context, "assistant".to_string(), &r, Some(&content), session).await?;
+                    spawn_save_message_with_raw(
+                        context,
+                        "assistant".to_string(),
+                        &r,
+                        Some(&content),
+                        session,
+                    )
+                    .await?;
                     messages.push(AssistantMessage {
                         role: String::from("assistant"),
                         content: content.clone(),
@@ -212,7 +221,6 @@ pub async fn execute_agent_loop(
                         code_chunk,
                         dependencies,
                     } => {
-                        // Placeholder for Self-Improvement Engine (Phase 3)
                         let chunk_info = format!(
                             "[CHUNK {}/{}] module={}, code_len={}, deps={:?}",
                             chunk_index,
@@ -224,10 +232,43 @@ pub async fn execute_agent_loop(
                         context
                             .spinner
                             .add_log_line(format!("\x1b[2m|   \x1b[33m{}\x1b[0m", chunk_info));
-                        if !combined_output.is_empty() {
-                            combined_output.push_str("\n---\n");
+
+                        // Вызов Self-Improvement Engine
+                        match self_improvement.handle_chunk(action).await {
+                            Ok(Some(result)) => {
+                                if !combined_output.is_empty() {
+                                    combined_output.push_str("\n---\n");
+                                }
+                                combined_output.push_str(&result);
+                            }
+                            Ok(None) => {
+                                // Chunk буферизован, ждём остальные
+                                if !combined_output.is_empty() {
+                                    combined_output.push_str("\n---\n");
+                                }
+                                combined_output.push_str(&format!(
+                                    "[CHUNK {}/{}] module '{}' buffered",
+                                    chunk_index, total_chunks, module_name
+                                ));
+                            }
+                            Err(e) => {
+                                if e.is_recoverable() {
+                                    // recoverable - передаём LLM для исправления
+                                    context.spinner.add_log_line(format!(
+                                        "\x1b[2m|   \x1b[33mRecoverable error: {}\x1b[0m",
+                                        e
+                                    ));
+                                    if !combined_output.is_empty() {
+                                        combined_output.push_str("\n---\n");
+                                    }
+                                    combined_output
+                                        .push_str(&format!("[SELF-IMPROVEMENT ERROR] {}", e));
+                                } else {
+                                    error_result = Some(e);
+                                    break;
+                                }
+                            }
                         }
-                        combined_output.push_str(&chunk_info);
                     }
                     Action::RespondToUser => {
                         context
@@ -249,30 +290,6 @@ pub async fn execute_agent_loop(
                 .set_last_full_output(combined_output.clone());
 
             content = if let Some(err) = error_result {
-                // fix_iteration += 1; (removed: value overwritten by response)
-                // if fix_iteration >= context.config.execution.fix_iteration_limit {
-                //     let final_state = format!(
-                //         "[FIX ERROR] Max fix iterations reached ({}). Last task: {}. Error: {}",
-                //         context.config.execution.fix_iteration_limit, response.message, err
-                //     );
-                //     spawn_save_message(
-                //         context,
-                //         "user".to_string(),
-                //         &ActionResponse {
-                //             message: final_state.clone(),
-                //             is_done: true,
-                //             actions: vec![],
-                //             iteration,
-                //             fix_iteration,
-                //             constraints: None,
-                //         },
-                //         session,
-                //     )
-                //     .await?;
-                //     return Err(IgrisError::MaxFixIterationsExceeded(
-                //         context.config.execution.fix_iteration_limit as usize,
-                //     ));
-                // }
                 handle_error(
                     err,
                     content.clone(),
@@ -296,7 +313,14 @@ pub async fn execute_agent_loop(
                     actions: vec![],
                 };
                 let task_obj_json = serde_json::json!(&task_object).to_string();
-                spawn_save_message_with_raw(context, "user".to_string(), &user_msg, Some(&task_obj_json), session).await?;
+                spawn_save_message_with_raw(
+                    context,
+                    "user".to_string(),
+                    &user_msg,
+                    Some(&task_obj_json),
+                    session,
+                )
+                .await?;
                 messages.push(AssistantMessage {
                     role: String::from("user"),
                     content: task_obj_json.clone(),
@@ -321,7 +345,14 @@ pub async fn execute_agent_loop(
             response = loop {
                 match serde_json::from_str::<ActionResponse>(&content) {
                     Ok(value) => {
-                        spawn_save_message_with_raw(context, "assistant".to_string(), &value, Some(&content), session).await?;
+                        spawn_save_message_with_raw(
+                            context,
+                            "assistant".to_string(),
+                            &value,
+                            Some(&content),
+                            session,
+                        )
+                        .await?;
                         messages.push(AssistantMessage {
                             role: String::from("assistant"),
                             content: content.clone(),
@@ -420,7 +451,6 @@ fn prompt_user_input(message: &str, options: &[String]) -> Result<String, IgrisE
                 return Ok(options[num - 1].clone());
             }
         }
-        // fallback: return raw input
     }
 
     Ok(input)
@@ -436,7 +466,6 @@ fn request_memory_data(
     let connection = context.connection.lock().unwrap_or_else(|e| e.into_inner());
     let mut results = String::new();
 
-    // Search by topics
     let topics = get_topics(&connection)?;
     let matching_topics: Vec<String> = topics
         .into_iter()
@@ -450,7 +479,6 @@ fn request_memory_data(
         ));
     }
 
-    // Search messages by keyword
     if let Ok(records) = search_messages(&connection, query, limit as i64) {
         for record in &records {
             results.push_str(&format!(
@@ -476,7 +504,6 @@ async fn handle_error(
     session: &Session,
     save_raw_content: bool,
 ) -> Result<String, IgrisError> {
-    // Non-recoverable errors: immediately return to user
     if should_abort_on_error(&error) {
         let error_msg = format!(
             "[IGRIS] Non-recoverable error: {}. Task has been stopped.",
@@ -514,13 +541,7 @@ async fn handle_error(
             is_done: false,
             actions: vec![],
         };
-        spawn_save_message(
-            context,
-            "assistant".to_string(),
-            &raw_action,
-            session,
-        )
-        .await?;
+        spawn_save_message(context, "assistant".to_string(), &raw_action, session).await?;
     }
 
     let error_str = format!("[SYSTEM EXECUTION RESULT] {}", error);
@@ -551,12 +572,9 @@ async fn handle_error(
     Ok(new_content)
 }
 
-/// Determines if an error should abort the agent loop immediately
-/// without asking LLM for a fix.
 fn should_abort_on_error(error: &IgrisError) -> bool {
     matches!(
         error,
-        IgrisError::LlmUnavailable(_) | IgrisError::LlmTimeout(_) | IgrisError::ConfigError(_) // | IgrisError::MaxIterationsExceeded(_)
-                                                                                               // | IgrisError::MaxFixIterationsExceeded(_)
+        IgrisError::LlmUnavailable(_) | IgrisError::LlmTimeout(_) | IgrisError::ConfigError(_)
     )
 }

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use reqwest::blocking::Client as BlockingClient;
-use reqwest::header::{ACCEPT, ACCEPT_LANGUAGE, HeaderMap, USER_AGENT};
+use reqwest::header::{HeaderMap, ACCEPT, ACCEPT_LANGUAGE, USER_AGENT};
 use scraper::{Html, Selector};
 use std::time::Duration;
 

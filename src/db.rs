@@ -1,5 +1,5 @@
-﻿use chrono::Local;
-use rusqlite::{Connection, params};
+use chrono::Local;
+use rusqlite::{params, Connection};
 use uuid::Uuid;
 
 use crate::{
@@ -252,18 +252,30 @@ pub fn trim_old_messages(
     Ok(affected)
 }
 
+/// Estimate context tokens using tiktoken-rs for accurate counting.
+/// Falls back to character-based estimate if tokenizer fails to load.
 pub fn estimate_context_tokens(
     connection: &Connection,
     session_id: &str,
 ) -> Result<usize, IgrisError> {
     let mut stmt =
-        connection.prepare("SELECT SUM(LENGTH(content)) FROM messages WHERE session_id = ?1")?;
+        connection.prepare("SELECT content FROM messages WHERE session_id = ?1 ORDER BY timestamp ASC")?;
 
-    let total_chars: i32 = stmt.query_row(params![session_id], |row| {
-        row.get::<_, Option<i32>>(0).map(|v| v.unwrap_or(0))
-    })?;
+    let messages: Vec<String> = stmt.query_map(params![session_id], |row| {
+        row.get::<_, String>(0)
+    })?
+    .filter_map(|r| r.ok())
+    .collect();
 
-    Ok((total_chars as usize) / 4)
+    // Try tiktoken first; fall back to simple estimation if it fails.
+    match crate::token_counter::count_tokens_batch(&messages) {
+        Ok(count) => Ok(count),
+        Err(_) => {
+            // Fallback: ~4 chars per token
+            let total_chars: usize = messages.iter().map(|m| m.len()).sum();
+            Ok(total_chars / 4)
+        }
+    }
 }
 
 pub fn get_context_paginated(

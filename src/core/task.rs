@@ -1,5 +1,5 @@
 use crate::{
-    core::{CoreContext, llm::generate_topics},
+    core::{llm::generate_topics, CoreContext},
     db::{get_topics, insert_message, insert_topic},
     error::IgrisError,
     memory::Session,

@@ -1,4 +1,4 @@
-use crate::skills::SkillError;
+﻿use crate::skills::SkillError;
 use rustyline::error::ReadlineError;
 use std::fmt;
 
@@ -41,6 +41,23 @@ pub enum IgrisError {
     IoError(String),
     PermissionDenied(String),
     ReadlineError(String),
+    InternalError(String),
+    Recoverable(String),
+}
+
+impl IgrisError {
+    /// Returns true if this error is recoverable and LLM can try to fix it
+    pub fn is_recoverable(&self) -> bool {
+        matches!(
+            self,
+            IgrisError::SkillRecoverableError(_)
+                | IgrisError::Recoverable(_)
+                | IgrisError::ModuleCompilationFailed(_)
+                | IgrisError::InvalidChunkSyntax(_, _)
+                | IgrisError::ValidatorRejected(_, _)
+                | IgrisError::ValidatorTestsFailed(_)
+        )
+    }
 }
 
 impl fmt::Display for IgrisError {
@@ -97,6 +114,8 @@ impl fmt::Display for IgrisError {
             IgrisError::IoError(msg) => write!(f, "[IO ERROR] {}", msg),
             IgrisError::PermissionDenied(msg) => write!(f, "[PERMISSION ERROR] {}", msg),
             IgrisError::ReadlineError(msg) => write!(f, "[READLINE ERROR] {}", msg),
+            IgrisError::InternalError(msg) => write!(f, "[INTERNAL ERROR] {}", msg),
+            IgrisError::Recoverable(msg) => write!(f, "[RECOVERABLE] {}", msg),
         }
     }
 }

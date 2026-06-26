@@ -2,9 +2,9 @@ use crate::{
     core::CoreContext,
     error::IgrisError,
     skills::{
-        SkillModule, gui_skill::GuiSkill, memory_skill::MemorySkill, shell_executor::ShellExecutor,
+        gui_skill::GuiSkill, memory_skill::MemorySkill, shell_executor::ShellExecutor,
         telegram_skill::TelegramSkill, user_profile_skill::UserProfileSkill,
-        voice_skill::VoiceSkill, web_search_skill::WebSearchSkill,
+        voice_skill::VoiceSkill, web_search_skill::WebSearchSkill, SkillModule,
     },
 };
 pub fn init_modules_metadata(

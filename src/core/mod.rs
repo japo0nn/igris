@@ -9,10 +9,11 @@ pub mod agent;
 pub mod chat;
 pub mod llm;
 pub mod markdown;
+pub mod self_improvement;
 pub mod spinner;
 pub mod task;
-pub mod utils;
 pub mod terminal_logger;
+pub mod utils;
 
 #[derive(Debug, Clone)]
 pub struct CoreContext {

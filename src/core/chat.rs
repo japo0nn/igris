@@ -1,4 +1,4 @@
-﻿use std::borrow::Cow;
+use std::borrow::Cow;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -11,13 +11,14 @@ use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
 use rustyline::hint::Hinter;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
-use rustyline::{Context, Editor, Helper, history::FileHistory};
+use rustyline::{history::FileHistory, Context, Editor, Helper};
 
 use crate::{
     core::{
-        CoreContext,
         agent::execute_agent_loop,
+        self_improvement::SelfImprovementEngine,
         task::{build_task_object, spawn_save_message_with_raw},
+        CoreContext,
     },
     error::IgrisError,
     memory::Session,
@@ -38,7 +39,7 @@ pub async fn chat_loopback(
         content: context.config.llm.system_prompt.clone(),
     }];
 
-    let window_size = 15;
+    let window_size = 30;
     let history_to_load = if initial_history.len() > window_size {
         initial_history[initial_history.len() - window_size..].to_vec()
     } else {
@@ -57,8 +58,11 @@ pub async fn chat_loopback(
     let history_path = get_history_path();
     let _ = rl.load_history(&history_path);
 
+    // Создаём SelfImprovementEngine
+    let self_improvement = SelfImprovementEngine::new();
+
     println!(
-        "\x1b[1;32mIGRIS\x1b[0m \x1b[1;36mv0.1.0\x1b[0m вЂ” interactive mode. Type \x1b[33m/help\x1b[0m for commands."
+        "\x1b[1;32mIGRIS\x1b[0m \x1b[1;36mv0.1.0\x1b[0m — interactive mode. Type \x1b[33m/help\x1b[0m for commands."
     );
 
     loop {
@@ -94,6 +98,7 @@ pub async fn chat_loopback(
                             session,
                             skills,
                             &mut messages,
+                            &self_improvement,
                         )
                         .await?;
                     }
@@ -108,6 +113,7 @@ pub async fn chat_loopback(
                     session,
                     skills,
                     &mut messages,
+                    &self_improvement,
                 )
                 .await?;
             }
@@ -158,11 +164,11 @@ fn handle_slash_command(
         "/help" | "/h" => {
             println!(
                 "\x1b[1;34m... Commands ...\x1b[0m\n\
-                 \x1b[33m/help\x1b[0m, \x1b[33m/h\x1b[0m      вЂ” Show this help\n\
-                 \x1b[33m/clear\x1b[0m, \x1b[33m/c\x1b[0m     вЂ” Clear the screen\n\
-                 \x1b[33m/exit\x1b[0m, \x1b[33m/q\x1b[0m      вЂ” Exit IGRIS\n\
-                 \x1b[33m/history\x1b[0m         вЂ” Show recent commands\n\
-                 \x1b[33m/edit\x1b[0m, \x1b[33m/e\x1b[0m      вЂ” Open external editor for long input"
+                 \x1b[33m/help\x1b[0m, \x1b[33m/h\x1b[0m      — Show this help\n\
+                 \x1b[33m/clear\x1b[0m, \x1b[33m/c\x1b[0m     — Clear the screen\n\
+                 \x1b[33m/exit\x1b[0m, \x1b[33m/q\x1b[0m      — Exit IGRIS\n\
+                 \x1b[33m/history\x1b[0m         — Show recent commands\n\
+                 \x1b[33m/edit\x1b[0m, \x1b[33m/e\x1b[0m      — Open external editor for long input"
             );
             Ok(None)
         }
@@ -260,6 +266,7 @@ async fn process_user_input(
     session: &Session,
     skills: &Vec<Box<dyn SkillModule>>,
     messages: &mut Vec<AssistantMessage>,
+    self_improvement: &SelfImprovementEngine,
 ) -> Result<(), IgrisError> {
     crate::core::terminal_logger::log_input(&input);
     let task_object = build_task_object(&input, skills, context, None)?;
@@ -282,7 +289,7 @@ async fn process_user_input(
     )
     .await?;
 
-    execute_agent_loop(&mut *messages, context, skills, session).await?;
+    execute_agent_loop(&mut *messages, context, skills, session, self_improvement).await?;
 
     if let Err(e) = rl.save_history(history_path) {
         eprintln!(
@@ -341,7 +348,6 @@ impl Highlighter for IgrisHelper {
         prompt: &'p str,
         _default: bool,
     ) -> Cow<'b, str> {
-        // Цвет добавляется здесь — rustyline сам знает что это не влияет на ширину
         Cow::Owned(format!("\x1b[1;34m{}\x1b[0m", prompt))
     }
 
